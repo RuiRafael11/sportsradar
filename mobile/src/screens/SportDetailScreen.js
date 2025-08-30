@@ -1,91 +1,66 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, Image, Alert, ScrollView, ActivityIndicator } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import styles from "../styles/SportDetailStyles";
-import { api } from "../services/api";
+import React from "react";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { useRoute, useNavigation } from "@react-navigation/native";
 
-export default function SportDetailScreen({ navigation, route }) {
-  // prioridade: usa o objeto completo se vier nos params
-  const [venue, setVenue] = useState(route?.params?.venue || null);
-  const venueId = route?.params?.venueId || venue?._id;
+export default function SportDetailScreen() {
+  const { params } = useRoute();
+  const navigation = useNavigation();
+  const venue = params?.venue;
 
-  useEffect(() => {
-    let mounted = true;
-
-    // só faz request se NÃO recebemos o objeto 'venue' mas temos um id
-    if (!venue && venueId) {
-      (async () => {
-        try {
-          const { data } = await api.get(`/venues/${venueId}`);
-          if (mounted) setVenue(data);
-        } catch (e) {
-          Alert.alert("Erro", "Não foi possível carregar o recinto.");
-        }
-      })();
-    }
-
-    return () => { mounted = false; };
-  }, [venueId]);
-
-  // se não há nem venue nem venueId, não temos como mostrar detalhe
-  if (!venue && !venueId) {
+  if (!venue) {
     return (
-      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
-        <Text>Sem dados do recinto.</Text>
-        <TouchableOpacity style={[styles.button, { marginTop: 12 }]} onPress={() => navigation.goBack()}>
-          <Text style={styles.buttonText}>Voltar</Text>
-        </TouchableOpacity>
+      <View style={styles.container}>
+        <Text style={styles.title}>Recinto não encontrado</Text>
       </View>
     );
   }
 
-  // enquanto vai buscar por id
-  if (!venue && venueId) {
-    return <ActivityIndicator style={{ marginTop: 20 }} />;
-  }
-
-  // a partir daqui temos 'venue'
-  const title = venue?.name || "Recinto";
-  const subtitle = [venue?.district, venue?.type].filter(Boolean).join(" • ");
-  const imageUri =
-    venue?.image ||
-    "https://images.unsplash.com/photo-1517649763962-0c623066013b?q=80&w=1200&auto=format&fit=crop";
-
   const onSchedule = () => {
-    navigation.navigate("Find", { venueId: venue._id, venueName: venue.name });
+    navigation.navigate("ScheduleEvent", {
+      venueId: venue._id,
+      venueName: venue.name,
+      venue,
+    });
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Image source={{ uri: imageUri }} style={{ width: "100%", height: 180, borderRadius: 12 }} />
-
-      <View style={{ marginTop: 12 }}>
-        <Text style={styles.title}>{title}</Text>
-        {!!subtitle && (
-          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
-            <Ionicons name="location-outline" size={16} color="black" />
-            <Text style={{ marginLeft: 6 }}>{subtitle}</Text>
-          </View>
-        )}
+    <View style={styles.container}>
+      <View style={styles.headerCard}>
+        <Text style={styles.name}>{venue.name}</Text>
+        {!!venue.district && <Text style={styles.district}>{venue.district}</Text>}
+        {!!venue.type && <Text style={styles.type}>{venue.type}</Text>}
+        {!!venue.notes && <Text style={styles.notes}>{venue.notes}</Text>}
       </View>
 
-      {venue?.address ? (
-        <View style={{ marginTop: 10 }}>
-          <Text style={{ fontWeight: "bold" }}>Morada</Text>
-          <Text>{venue.address}</Text>
-        </View>
-      ) : null}
-
-      <TouchableOpacity style={styles.button} onPress={onSchedule}>
-        <Text style={styles.buttonText}>Agendar</Text>
+      <TouchableOpacity style={styles.cta} onPress={onSchedule}>
+        <Text style={styles.ctaText}>Agendar</Text>
       </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.button, { backgroundColor: "#444", marginTop: 10 }]}
-        onPress={() => navigation.goBack()}
-      >
-        <Text style={styles.buttonText}>Voltar</Text>
-      </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#F5F6FA", padding: 16 },
+  headerCard: {
+    backgroundColor: "#fff",
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    marginBottom: 16,
+  },
+  name: { fontSize: 22, fontWeight: "800", marginBottom: 6 },
+  district: { fontSize: 16, color: "#555", marginBottom: 2 },
+  type: { fontSize: 14, color: "#333", marginBottom: 8 },
+  notes: { fontSize: 13, color: "#666" },
+  cta: {
+    backgroundColor: "#8B0000",
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  ctaText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+});
