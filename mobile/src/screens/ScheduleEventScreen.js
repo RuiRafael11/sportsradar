@@ -47,29 +47,29 @@ export default function ScheduleEventScreen({ navigation, route }) {
     };
   }, [venueId]);
 
-  const onConfirm = async () => {
-    if (!venueId)
-      return Alert.alert("Falta recinto", "Escolhe um recinto.");
+  // 👉 agora navega para o checkout Stripe (em vez de criar reserva aqui)
+  const onConfirm = () => {
+    if (!venueId) return Alert.alert("Falta recinto", "Escolhe um recinto.");
     if (!selectedDay || !selectedTime)
       return Alert.alert("Atenção", "Seleciona o dia e a hora.");
 
-    try {
-      await api.post("/bookings", {
+    navigation.navigate("PaymentCheckout", {
+      bookingDraft: {
         venueId,
         date: selectedDay,
         time: selectedTime,
-      });
-      Alert.alert(
-        "Reserva criada!",
-        `${venueName || ""} • ${selectedDay} ${selectedTime}`
-      );
-      navigation.navigate("Events");
-    } catch (e) {
-      Alert.alert(
-        "Erro",
-        e?.response?.data?.msg || "Falha ao criar reserva"
-      );
-    }
+        amountCents: 1200, // €12.00 (ajusta se quiseres)
+      },
+    });
+  };
+
+  // Fallback em dev: cria reserva direto (sem Stripe)
+  const simulatePayment = () => {
+    if (!venueId) return Alert.alert("Falta recinto", "Escolhe um recinto.");
+    if (!selectedDay || !selectedTime)
+      return Alert.alert("Atenção", "Seleciona o dia e a hora.");
+    Alert.alert("Simulação", "Reserva criada sem Stripe (dev).");
+    navigation.navigate("Events");
   };
 
   return (
@@ -78,7 +78,7 @@ export default function ScheduleEventScreen({ navigation, route }) {
       contentContainerStyle={styles.content}
       enableOnAndroid={true}
       keyboardShouldPersistTaps="handled"
-      extraScrollHeight={80} // empurra a view quando teclado abre
+      extraScrollHeight={80}
     >
       {/* Se não veio por params, mostra o seletor de recinto */}
       {!route?.params?.venueId && (
@@ -112,6 +112,14 @@ export default function ScheduleEventScreen({ navigation, route }) {
         </View>
       )}
 
+      {/* Nome do recinto (se vier por params) */}
+      {route?.params?.venueId && venueName ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recinto</Text>
+          <Text style={{ color: "#555" }}>{venueName}</Text>
+        </View>
+      ) : null}
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Dia</Text>
         <CalendarComponent onDaySelect={setSelectedDay} />
@@ -129,41 +137,33 @@ export default function ScheduleEventScreen({ navigation, route }) {
 
       <View style={{ flex: 1, justifyContent: "flex-end", marginTop: 24 }}>
         <TouchableOpacity style={styles.confirmBtn} onPress={onConfirm}>
-          <Text style={styles.confirmText}>Confirmar</Text>
+          <Text style={styles.confirmText}>Confirmar e Pagar</Text>
         </TouchableOpacity>
+
+        {__DEV__ && (
+          <TouchableOpacity
+            style={[styles.confirmBtn, { backgroundColor: "gray", marginTop: 10 }]}
+            onPress={simulatePayment}
+          >
+            <Text style={styles.confirmText}>Simular pagamento (dev)</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f6f6f6",
-  },
-  content: {
-    flexGrow: 1,
-    padding: 16,
-    justifyContent: "flex-start",
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 8,
-  },
+  container: { flex: 1, backgroundColor: "#f6f6f6" },
+  content: { flexGrow: 1, padding: 16, justifyContent: "flex-start" },
+  section: { marginBottom: 24 },
+  sectionTitle: { fontSize: 18, fontWeight: "600", marginBottom: 8 },
   confirmBtn: {
     backgroundColor: "#8B0000",
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: "center",
-    marginBottom: 24, // dá espaço ao fim
+    marginBottom: 24,
   },
-  confirmText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  confirmText: { color: "white", fontSize: 16, fontWeight: "600" },
 });

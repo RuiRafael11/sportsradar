@@ -1,2 +1,16 @@
+# ambiente
 .env
+.env.*
+
+# Node
 node_modules/
+npm-debug.log
+yarn-error.log
+
+# Expo
+.expo/
+.expo-shared/
+
+# Build
+dist/
+build/

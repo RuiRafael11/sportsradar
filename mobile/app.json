@@ -12,6 +12,10 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "extra": {
+      "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51S1honEx8G1dJpu8KedwX7PTKskjk3yKWIRcwVKOlg7jRo5RxoTuk8txqKjpp4l1GvxYywvYQrvHKAgp4ajcQiVa00tlKpsfgm",
+      "EXPO_PUBLIC_API_BASE_URL": "http://192.168.1.5:5000/api"
+    },
     "ios": {
       "supportsTablet": true
     },

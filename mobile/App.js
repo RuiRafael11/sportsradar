@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
 
 // Screens
+import PaymentCheckoutScreen from "./src/screens/PaymentCheckoutScreen";
 import LoginScreen from "./src/screens/LoginScreen";
 import RegisterScreen from "./src/screens/RegisterScreen";
 import HomeScreen from "./src/screens/HomeScreen";
@@ -28,6 +29,7 @@ function FindNavigator() {
       <FindStack.Screen name="Map" component={MapScreen} options={{ headerShown: false }} />
       <FindStack.Screen name="SportDetail" component={SportDetailScreen} />
       <FindStack.Screen name="ScheduleEvent" component={ScheduleEventScreen} />
+      <FindStack.Screen name="PaymentCheckout" component={PaymentCheckoutScreen} />
     </FindStack.Navigator>
   );
 }

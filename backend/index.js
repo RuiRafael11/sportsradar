@@ -23,6 +23,8 @@ app.use('/api/bookings', bookingsRouter);
   const authRouter   = require('./routes/auth');    // deve imprimir "🔐 Rotas de auth carregadas"
   app.use('/api/venues', venuesRouter);
   app.use('/api/auth', authRouter);
+const paymentsRouter = require('./routes/payments');
+app.use('/api/payments', paymentsRouter);
 
   // --- Liga à BD e só depois arranca o servidor ---
   const PORT = process.env.PORT || 5000;
