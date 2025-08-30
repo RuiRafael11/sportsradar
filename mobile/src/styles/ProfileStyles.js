@@ -1,13 +1,56 @@
 import { StyleSheet } from "react-native";
 
 export default StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f6f6f6", padding: 20 },
-  title: { fontSize: 22, fontWeight: "bold", marginBottom: 16 },
-  input: {
-    backgroundColor: "#fff", borderWidth: 1, borderColor: "#ddd",
-    padding: 14, borderRadius: 10, marginBottom: 12,
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F6FA",
   },
-  button: { backgroundColor: "#000", padding: 14, borderRadius: 10, alignItems: "center", marginTop: 8 },
-  buttonText: { color: "#fff", fontWeight: "bold" },
-  logout: { backgroundColor: "#900", padding: 14, borderRadius: 10, alignItems: "center", marginTop: 12 },
+  content: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+  label: {
+    fontSize: 13,
+    color: "#555",
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  input: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+  },
+  button: {
+    backgroundColor: "#8B0000",
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    marginTop: 8,
+    marginHorizontal: 16,
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
 });
