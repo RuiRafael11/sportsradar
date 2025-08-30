@@ -1,30 +1,38 @@
-// App.js
-import React from "react";
-import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Ionicons } from "@expo/vector-icons";
+// TEM DE SER A PRIMEIRA LINHA
+import 'react-native-gesture-handler';
 
-import { AuthProvider, useAuth } from "./src/context/AuthContext";
+import React from 'react';
+import { View, ActivityIndicator } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import LoginScreen from "./src/screens/LoginScreen";
-import RegisterScreen from "./src/screens/RegisterScreen";
-import HomeScreen from "./src/screens/HomeScreen";
-import ProfileScreen from "./src/screens/ProfileScreen";
-import HistoryScreen from "./src/screens/HistoryScreen";
-import ScheduleEventScreen from "./src/screens/ScheduleEventScreen";
+import { AuthProvider, useAuth } from './src/context/AuthContext';
+
+import LoginScreen from './src/screens/LoginScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
+import HomeScreen from './src/screens/HomeScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
+import HistoryScreen from './src/screens/HistoryScreen';
+import ScheduleEventScreen from './src/screens/ScheduleEventScreen'; // robusto (versão abaixo)
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function AppTabs() {
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false }}>
+    <Tab.Navigator
+      initialRouteName="Home"
+      screenOptions={{ headerShown: false, lazy: true }}
+    >
       <Tab.Screen
         name="Home"
         component={HomeScreen}
         options={{ tabBarIcon: ({ color, size }) => <Ionicons name="home" color={color} size={size} /> }}
       />
+      {/* Find aponta diretamente para o Schedule (sem mapa) */}
       <Tab.Screen
         name="Find"
         component={ScheduleEventScreen}
@@ -45,10 +53,14 @@ function AppTabs() {
 }
 
 function RootNavigator() {
-  const { user, booting } = useAuth(); // << usa o hook (não useContext(AuthContext))
-
-  if (booting) return null; // aqui podes pôr um splash/loader
-
+  const { user, booting } = useAuth();
+  if (booting) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
@@ -66,9 +78,11 @@ function RootNavigator() {
 export default function App() {
   return (
     <AuthProvider>
-      <NavigationContainer>
-        <RootNavigator />
-      </NavigationContainer>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <RootNavigator />
+        </NavigationContainer>
+      </SafeAreaProvider>
     </AuthProvider>
   );
 }
