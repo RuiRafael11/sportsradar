@@ -6,7 +6,8 @@
   const app = express();
   app.use(cors());
   app.use(express.json());
-
+const bookingsRouter = require('./routes/Bookings');
+app.use('/api/bookings', bookingsRouter);
   // --- DEBUG: ver se a ENV está a ser lida ---
   const rawUri = process.env.MONGODB_URI;
   if (!rawUri) {
@@ -25,7 +26,8 @@
 
   // --- Liga à BD e só depois arranca o servidor ---
   const PORT = process.env.PORT || 5000;
-
+console.log('A ligar a:', (process.env.MONGODB_URI || '').replace(/(\/\/[^:]+:)[^@]+/, '$1*****'));
+  
   mongoose.connect(rawUri)
     .then(() => {
       console.log('✅ Ligado ao MongoDB');
