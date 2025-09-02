@@ -1,15 +1,9 @@
+// src/screens/ScheduleEventScreen.js
 import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  StyleSheet,
-} from "react-native";
+import { View, Text, TouchableOpacity, Alert, ActivityIndicator, StyleSheet } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
-
+import * as Notifications from "expo-notifications";
 import CalendarComponent from "../components/CalendarComponent";
 import TimePickerComponent from "../components/TimePickerComponent";
 import { api } from "../services/api";
@@ -19,18 +13,15 @@ export default function ScheduleEventScreen({ navigation, route }) {
   const [venueId, setVenueId] = useState(route?.params?.venueId || null);
   const [venueName, setVenueName] = useState(route?.params?.venueName || "");
   const [loadingVenues, setLoadingVenues] = useState(false);
-
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
 
-  // Se não vier venueId por params, carrega lista de recintos
   useEffect(() => {
     let mounted = true;
     if (!venueId) {
       setLoadingVenues(true);
-      api
-        .get("/venues")
-        .then((r) => {
+      api.get("/venues")
+        .then(r => {
           const arr = r.data || [];
           if (!mounted) return;
           setVenues(arr);
@@ -42,59 +33,33 @@ export default function ScheduleEventScreen({ navigation, route }) {
         .catch(() => setVenues([]))
         .finally(() => setLoadingVenues(false));
     }
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [venueId]);
 
-  // 👉 agora navega para o checkout Stripe (em vez de criar reserva aqui)
-  const onConfirm = () => {
+  const onConfirm = async () => {
     if (!venueId) return Alert.alert("Falta recinto", "Escolhe um recinto.");
-    if (!selectedDay || !selectedTime)
-      return Alert.alert("Atenção", "Seleciona o dia e a hora.");
+    if (!selectedDay || !selectedTime) return Alert.alert("Atenção", "Seleciona o dia e a hora.");
 
+    // 👉 segue para a folha de pagamento com os parâmetros necessários
     navigation.navigate("PaymentCheckout", {
-      bookingDraft: {
-        venueId,
-        date: selectedDay,
-        time: selectedTime,
-        amountCents: 1200, // €12.00 (ajusta se quiseres)
-      },
+      venueId,
+      venueName,
+      date: selectedDay,
+      time: selectedTime,
+      amountCents: 1200, // 12,00 €
+      currency: "eur",
     });
   };
 
-  // Fallback em dev: cria reserva direto (sem Stripe)
-  const simulatePayment = () => {
-    if (!venueId) return Alert.alert("Falta recinto", "Escolhe um recinto.");
-    if (!selectedDay || !selectedTime)
-      return Alert.alert("Atenção", "Seleciona o dia e a hora.");
-    Alert.alert("Simulação", "Reserva criada sem Stripe (dev).");
-    navigation.navigate("Events");
-  };
-
   return (
-    <KeyboardAwareScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      enableOnAndroid={true}
-      keyboardShouldPersistTaps="handled"
-      extraScrollHeight={80}
-    >
-      {/* Se não veio por params, mostra o seletor de recinto */}
+    <KeyboardAwareScrollView style={styles.container} contentContainerStyle={styles.content} enableOnAndroid keyboardShouldPersistTaps="handled" extraScrollHeight={80}>
       {!route?.params?.venueId && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recinto</Text>
           {loadingVenues ? (
             <ActivityIndicator style={{ marginTop: 8 }} />
           ) : (
-            <View
-              style={{
-                borderWidth: 1,
-                borderColor: "#ddd",
-                borderRadius: 8,
-                backgroundColor: "#fff",
-              }}
-            >
+            <View style={{ borderWidth: 1, borderColor: "#ddd", borderRadius: 8, backgroundColor: "#fff" }}>
               <Picker
                 selectedValue={venueId}
                 onValueChange={(val) => {
@@ -112,14 +77,6 @@ export default function ScheduleEventScreen({ navigation, route }) {
         </View>
       )}
 
-      {/* Nome do recinto (se vier por params) */}
-      {route?.params?.venueId && venueName ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recinto</Text>
-          <Text style={{ color: "#555" }}>{venueName}</Text>
-        </View>
-      ) : null}
-
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Dia</Text>
         <CalendarComponent onDaySelect={setSelectedDay} />
@@ -128,26 +85,14 @@ export default function ScheduleEventScreen({ navigation, route }) {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Hora</Text>
-        <TimePickerComponent
-          selectedTime={selectedTime}
-          onTimeChange={setSelectedTime}
-        />
+        <TimePickerComponent selectedTime={selectedTime} onTimeChange={setSelectedTime} />
         {selectedTime ? <Text>Selecionado: {selectedTime}</Text> : null}
       </View>
 
       <View style={{ flex: 1, justifyContent: "flex-end", marginTop: 24 }}>
         <TouchableOpacity style={styles.confirmBtn} onPress={onConfirm}>
-          <Text style={styles.confirmText}>Confirmar e Pagar</Text>
+          <Text style={styles.confirmText}>Confirmar</Text>
         </TouchableOpacity>
-
-        {__DEV__ && (
-          <TouchableOpacity
-            style={[styles.confirmBtn, { backgroundColor: "gray", marginTop: 10 }]}
-            onPress={simulatePayment}
-          >
-            <Text style={styles.confirmText}>Simular pagamento (dev)</Text>
-          </TouchableOpacity>
-        )}
       </View>
     </KeyboardAwareScrollView>
   );
@@ -158,12 +103,6 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1, padding: 16, justifyContent: "flex-start" },
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 18, fontWeight: "600", marginBottom: 8 },
-  confirmBtn: {
-    backgroundColor: "#8B0000",
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: "center",
-    marginBottom: 24,
-  },
+  confirmBtn: { backgroundColor: "#8B0000", paddingVertical: 14, borderRadius: 8, alignItems: "center", marginBottom: 24 },
   confirmText: { color: "white", fontSize: 16, fontWeight: "600" },
 });

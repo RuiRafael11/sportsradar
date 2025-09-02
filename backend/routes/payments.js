@@ -1,61 +1,108 @@
 // backend/routes/payments.js
 const express = require('express');
-const Stripe = require('stripe');
 const router = express.Router();
+const requireAuth = require('../middleware/auth');
 
+// ===== Stripe client com SECRET do .env =====
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
+if (!STRIPE_SECRET_KEY) {
+  console.warn('⚠️ STRIPE_SECRET_KEY não definida no .env');
+}
+const stripe = require('stripe')(STRIPE_SECRET_KEY);
 
+// (opcional) expor a publishable para o cliente preparar PaymentSheet
+const PUBLISHABLE_KEY = process.env.PUBLISHABLE_KEY || process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
+
+/**
+ * Healthcheck rápido
+ */
 router.get('/ping', (req, res) => {
   res.json({
     ok: true,
-    hasSecret: !!STRIPE_SECRET_KEY,
-    message: STRIPE_SECRET_KEY ? 'Stripe key presente' : '⚠️ STRIPE_SECRET_KEY ausente no .env',
+    hasSecret: Boolean(STRIPE_SECRET_KEY),
+    hasPublishable: Boolean(PUBLISHABLE_KEY),
   });
 });
 
-// POST /api/payments/payment-sheet
-router.post('/payment-sheet', async (req, res) => {
+/**
+ * Cria dados para o PaymentSheet:
+ * - customer (ou reutiliza)
+ * - ephemeral key
+ * - payment intent
+ * body: { amount (em cêntimos), currency, customerEmail? }
+ */
+router.post('/payment-sheet', requireAuth, async (req, res) => {
   try {
-    if (!stripe) {
-      return res.status(400).json({ error: { message: 'STRIPE_SECRET_KEY não configurada no backend' } });
-    }
-
-    const amount = Number(req.body?.amount);
+    const amount = Number(req.body?.amount ?? 1200); // default 12.00€
     const currency = String(req.body?.currency || 'eur').toLowerCase();
+    const customerEmail = req.body?.customerEmail || undefined;
 
-    if (!Number.isFinite(amount) || amount < 50) {
-      return res.status(400).json({ error: { message: 'amount inválido (mínimo 50 cêntimos)' } });
+    if (!STRIPE_SECRET_KEY) {
+      return res.status(500).json({ msg: 'Stripe secret key em falta no servidor' });
     }
 
-    console.log('💳 /payment-sheet body =>', req.body);
-
-    // cliente (demo)
-    const customers = await stripe.customers.list({ limit: 1 });
-    const customerId = customers.data[0]?.id || (await stripe.customers.create({ name: 'SportRadar User' })).id;
-
-    // ephemeral key
-    const ephemeralKey = await stripe.ephemeralKeys.create(
-      { customer: customerId },
-      { apiVersion: '2024-06-20' } // mantém esta versão
+    // 1) Customer (podes persistir o customerId no teu User se quiseres)
+    const customer = await stripe.customers.create(
+      customerEmail ? { email: customerEmail } : {}
     );
 
-    // payment intent
+    // 2) Ephemeral key
+    const ephemeralKey = await stripe.ephemeralKeys.create(
+      { customer: customer.id },
+      { apiVersion: '2024-06-20' } // usa uma versão recente
+    );
+
+    // 3) PaymentIntent (automático para cartões, Apple/Google Pay, etc.)
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency,
-      customer: customerId,
+      customer: customer.id,
       automatic_payment_methods: { enabled: true },
     });
 
     return res.json({
       paymentIntent: paymentIntent.client_secret,
       ephemeralKey: ephemeralKey.secret,
-      customer: customerId,
+      customer: customer.id,
+      publishableKey: PUBLISHABLE_KEY, // o cliente pode usar esta se precisar
+      paymentIntentId: paymentIntent.id,
     });
-  } catch (err) {
-    console.error('❌ Stripe error:', err?.type, err?.code, err?.message);
-    return res.status(400).json({ error: { message: err?.message || 'Erro Stripe' } });
+  } catch (e) {
+    console.error('PAYMENT_SHEET ERROR:', e);
+    const msg = e?.raw?.message || e?.message || 'Erro a preparar pagamento';
+    return res.status(400).json({ msg });
+  }
+});
+
+/**
+ * (Opcional) Captura/Confirmação server-side ou obter recibo:
+ * Recebe paymentIntentId e devolve latest_charge e receipt_url
+ */
+router.post('/capture', requireAuth, async (req, res) => {
+  try {
+    const { paymentIntentId } = req.body || {};
+    if (!paymentIntentId) {
+      return res.status(400).json({ msg: 'paymentIntentId em falta' });
+    }
+
+    // Obter o PI para ler latest_charge (no modo automático já vai “requires_capture: false”)
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ['latest_charge'],
+    });
+
+    const charge = pi.latest_charge;
+    const receiptUrl = charge?.receipt_url || null;
+
+    return res.json({
+      paymentIntentId: pi.id,
+      status: pi.status,
+      receiptUrl,
+      chargeId: charge?.id || null,
+    });
+  } catch (e) {
+    console.error('PAYMENTS_CAPTURE ERROR:', e);
+    const msg = e?.raw?.message || e?.message || 'Erro ao capturar/obter recibo';
+    return res.status(400).json({ msg });
   }
 });
 

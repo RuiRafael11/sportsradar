@@ -1,141 +1,64 @@
-import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-} from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
-import styles from "../styles/ProfileStyles";
+import React, { useState } from "react";
+import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { api } from "../services/api";
-import { meRequest } from "../services/auth";
+import styles from "../styles/ProfileStyles";
 import { useAuth } from "../context/AuthContext";
+import { useNavigation } from "@react-navigation/native";
 
 export default function ProfileScreen() {
-  const { logout } = useAuth();
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-
-  const [newPassword, setNewPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const me = await meRequest();
-        if (!mounted) return;
-        setName(me?.name || "");
-        setEmail(me?.email || "");
-      } catch (_) {
-        Alert.alert("Erro", "Não foi possível carregar o perfil.");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  const { user, logout } = useAuth();
+  const navigation = useNavigation();
+  const [name, setName] = useState(user?.name || "");
+  const [password, setPassword] = useState("");
 
   const onSave = async () => {
-    // validações simples
-    if (!name.trim()) return Alert.alert("Atenção", "O nome não pode estar vazio.");
-    if (newPassword || confirm) {
-      if (newPassword.length < 6) return Alert.alert("Atenção", "Password deve ter pelo menos 6 caracteres.");
-      if (newPassword !== confirm) return Alert.alert("Atenção", "As passwords não coincidem.");
-    }
-
     try {
-      setSaving(true);
-      const body = { name: name.trim() };
-      if (newPassword) body.password = newPassword;
-
+      const body = {};
+      if (name && name !== user?.name) body.name = name;
+      if (password) body.password = password;
+      if (!Object.keys(body).length) return Alert.alert("Nada para atualizar");
       await api.patch("/auth/me", body);
-      Alert.alert("Sucesso", newPassword ? "Nome e password atualizados." : "Nome atualizado.");
-
-      // limpar campos de password depois de gravar
-      setNewPassword("");
-      setConfirm("");
+      Alert.alert("Perfil atualizado");
     } catch (e) {
-      Alert.alert("Erro", e?.response?.data?.msg || "Falha ao atualizar perfil.");
-    } finally {
-      setSaving(false);
+      Alert.alert("Erro", e?.response?.data?.msg || e.message);
     }
   };
 
-  if (loading) {
-    return (
-      <View style={[styles.container, { alignItems: "center", justifyContent: "center" }]}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
   return (
-    <KeyboardAwareScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      enableOnAndroid
-      keyboardShouldPersistTaps="handled"
-      extraScrollHeight={80}
-    >
-      {/* Header simples */}
-      <View style={styles.card}>
-        <Text style={styles.title}>Perfil</Text>
+    <ScrollView style={{ flex:1, backgroundColor:"#fff" }} contentContainerStyle={{ padding:16 }}>
+      <Text style={{ fontSize:22, fontWeight:"800", marginBottom:16 }}>Perfil</Text>
 
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          style={[styles.input, { backgroundColor: "#efefef", color: "#666" }]}
-          value={email}
-          editable={false}
-        />
+      <Text style={styles.label}>Nome</Text>
+      <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="O teu nome" />
 
-        <Text style={styles.label}>Nome</Text>
-        <TextInput
-          style={styles.input}
-          value={name}
-          onChangeText={setName}
-          placeholder="O teu nome"
-          autoCapitalize="words"
-        />
-      </View>
+      <Text style={styles.label}>Password (opcional)</Text>
+      <TextInput style={styles.input} value={password} onChangeText={setPassword} placeholder="Nova password" secureTextEntry />
 
-      <View style={styles.card}>
-        <Text style={styles.title}>Alterar password (opcional)</Text>
-
-        <Text style={styles.label}>Nova password</Text>
-        <TextInput
-          style={styles.input}
-          value={newPassword}
-          onChangeText={setNewPassword}
-          placeholder="Mínimo 6 caracteres"
-          secureTextEntry
-        />
-
-        <Text style={styles.label}>Confirmar password</Text>
-        <TextInput
-          style={styles.input}
-          value={confirm}
-          onChangeText={setConfirm}
-          placeholder="Repete a password"
-          secureTextEntry
-        />
-      </View>
-
-      <TouchableOpacity style={[styles.button, saving && { opacity: 0.7 }]} onPress={onSave} disabled={saving}>
-        <Text style={styles.buttonText}>{saving ? "A guardar..." : "Guardar alterações"}</Text>
+      <TouchableOpacity style={styles.saveBtn} onPress={onSave}>
+        <Text style={styles.saveTxt}>Guardar</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.button, { backgroundColor: "#444" }]} onPress={logout}>
-        <Text style={styles.buttonText}>Terminar sessão</Text>
+      <View style={{ height: 24 }} />
+
+      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate("Help")}>
+        <Ionicons name="help-circle-outline" size={20} color="#8B0000" style={{ marginRight: 8 }} />
+        <Text style={styles.rowTxt}>Ajuda</Text>
       </TouchableOpacity>
-    </KeyboardAwareScrollView>
+
+      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate("About")}>
+        <Ionicons name="information-circle-outline" size={20} color="#8B0000" style={{ marginRight: 8 }} />
+        <Text style={styles.rowTxt}>Sobre</Text>
+      </TouchableOpacity>
+
+      <View style={{ height: 24 }} />
+
+      <TouchableOpacity
+        style={[styles.saveBtn, { backgroundColor: "#eee", borderWidth:1, borderColor:"#ddd" }]}
+        onPress={logout}
+      >
+        <Text style={[styles.saveTxt, { color:"#a00" }]}>Terminar sessão</Text>
+      </TouchableOpacity>
+    </ScrollView>
   );
 }

@@ -1,36 +1,32 @@
+// src/screens/HistoryScreen.js
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  SafeAreaView,
   View,
   Text,
   FlatList,
-  ActivityIndicator,
+  Alert,
   RefreshControl,
   TouchableOpacity,
+  StyleSheet,
+  Linking,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import styles from "../styles/HistoryStyles";
+import { Ionicons } from "@expo/vector-icons";
 import { api } from "../services/api";
 
-function parseBookingDate(b) {
-  // b.date: "YYYY-MM-DD", b.time: "HH:mm"
-  const [y, m, d] = (b?.date || "").split("-").map(Number);
-  const [hh, mm] = (b?.time || "00:00").split(":").map(Number);
-  if (!y || !m || !d) return null;
-  return new Date(y, m - 1, d, hh || 0, mm || 0, 0, 0);
-}
-
 export default function HistoryScreen() {
-  const [list, setList] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab] = useState("upcoming"); // 'upcoming' | 'past'
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const load = async () => {
+    setLoading(true);
     try {
-      const r = await api.get("/bookings/me");
-      setList(r.data || []);
-    } catch (e) {
-      setList([]);
+      const { data } = await api.get("/bookings/my");
+      setItems(data || []);
+    } catch {
+      Alert.alert("Erro", "Não foi possível carregar as reservas.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -40,86 +36,166 @@ export default function HistoryScreen() {
     }, [])
   );
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  };
+  const toDate = (b) => new Date(`${b.date}T${b.time || "00:00"}:00`);
 
   const { upcoming, past } = useMemo(() => {
     const now = new Date();
-    const arr = (list || []).slice().sort((a, b) => {
-      const da = parseBookingDate(a)?.getTime() || 0;
-      const db = parseBookingDate(b)?.getTime() || 0;
-      return da - db;
-    });
-    return {
-      upcoming: arr.filter((b) => (parseBookingDate(b) || now) >= now),
-      past: arr.filter((b) => (parseBookingDate(b) || now) < now),
-    };
-  }, [list]);
+    const up = [];
+    const pa = [];
+    (items || []).forEach((b) => (toDate(b) >= now ? up : pa).push(b));
+    up.sort((a, b) => toDate(a) - toDate(b));
+    pa.sort((a, b) => toDate(b) - toDate(a));
+    return { upcoming: up, past: pa };
+  }, [items]);
 
-  const data = tab === "upcoming" ? upcoming : past;
-
-  if (!list) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator style={{ marginTop: 20 }} />
-      </SafeAreaView>
+  const openReceipt = (paymentIntentId) => {
+    // Abre no Stripe Dashboard (modo test)
+    const url = `https://dashboard.stripe.com/test/payments/${paymentIntentId}`;
+    Linking.openURL(url).catch(() =>
+      Alert.alert("Ops", "Não foi possível abrir o recibo.")
     );
-  }
+  };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* tabs */}
-      <View style={styles.tabs}>
-        <TouchableOpacity
-          style={[styles.tabBtn, tab === "upcoming" && styles.tabBtnActive]}
-          onPress={() => setTab("upcoming")}
-        >
-          <Text style={[styles.tabTxt, tab === "upcoming" && styles.tabTxtActive]}>Próximos</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabBtn, tab === "past" && styles.tabBtnActive]}
-          onPress={() => setTab("past")}
-        >
-          <Text style={[styles.tabTxt, tab === "past" && styles.tabTxtActive]}>Passados</Text>
-        </TouchableOpacity>
-      </View>
+  const confirmCancel = (booking) => {
+    Alert.alert(
+      "Cancelar reserva",
+      `Queres cancelar ${booking.venue?.name || "o recinto"} em ${booking.date} às ${
+        booking.time
+      }?`,
+      [
+        { text: "Não", style: "cancel" },
+        { text: "Sim", style: "destructive", onPress: () => cancel(booking) },
+      ]
+    );
+  };
 
-      {data.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <Text style={styles.emptyTitle}>
-            {tab === "upcoming" ? "Sem reservas futuras" : "Sem reservas passadas"}
+  const cancel = async (booking) => {
+    try {
+      const { data } = await api.delete(`/bookings/${booking._id}`);
+      setItems((prev) =>
+        prev.map((b) => (b._id === booking._id ? { ...b, status: "cancelled" } : b))
+      );
+      Alert.alert("Reserva cancelada", data?.msg || "");
+    } catch (e) {
+      Alert.alert(
+        "Não foi possível cancelar",
+        e?.response?.data?.msg || "Tenta novamente."
+      );
+    }
+  };
+
+  const renderItem = ({ item }) => {
+    const cancelled = item.status === "cancelled";
+    return (
+      <View style={s.card}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.title} numberOfLines={1}>
+            {item.venue?.name || "Recinto"}
           </Text>
-          <Text style={styles.emptySubtitle}>
-            Faz uma reserva na aba “Find”.
+          <Text style={s.sub}>
+            {item.date} às {item.time}
           </Text>
+          {cancelled ? <Text style={s.cancelled}>Cancelada</Text> : null}
         </View>
+
+        <View style={s.actions}>
+          {item.paymentIntentId ? (
+            <TouchableOpacity
+              style={s.secondaryBtn}
+              onPress={() => openReceipt(item.paymentIntentId)}
+            >
+              <Ionicons name="receipt-outline" size={18} color="#8B0000" />
+              <Text style={s.secondaryText}>Ver recibo</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {!cancelled && (
+            <TouchableOpacity style={s.cancelBtn} onPress={() => confirmCancel(item)}>
+              <Ionicons name="trash-outline" size={18} color="#fff" />
+              <Text style={s.cancelBtnText}>Cancelar</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  const section = (label, data) => (
+    <View style={{ marginTop: 16 }}>
+      <Text style={s.sectionTitle}>{label}</Text>
+      {data.length === 0 ? (
+        <Text style={s.empty}>Sem registos.</Text>
       ) : (
         <FlatList
           data={data}
-          keyExtractor={(i) => i._id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          renderItem={({ item }) => (
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text numberOfLines={1} style={styles.venueName}>
-                  {item?.venue?.name || "Recinto"}
-                </Text>
-                <Text style={styles.badge}>{item?.venue?.type || "Reserva"}</Text>
-              </View>
-              <Text style={styles.when}>
-                {item.date} às {item.time}
-              </Text>
-              {!!item?.venue?.district && (
-                <Text style={styles.meta}>{item.venue.district}</Text>
-              )}
-            </View>
-          )}
+          keyExtractor={(it) => it._id}
+          renderItem={renderItem}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
         />
       )}
-    </SafeAreaView>
+    </View>
+  );
+
+  return (
+    <FlatList
+      data={[{ key: "container" }]}
+      renderItem={() => (
+        <View style={s.container}>
+          {section("Próximos", upcoming)}
+          {section("Passados", past)}
+        </View>
+      )}
+      keyExtractor={(it) => it.key}
+      refreshControl={
+        <RefreshControl refreshing={loading} onRefresh={load} tintColor="#8B0000" />
+      }
+      contentContainerStyle={{ paddingVertical: 12 }}
+    />
   );
 }
+
+const s = StyleSheet.create({
+  container: { paddingHorizontal: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: "700", marginBottom: 8 },
+  empty: { opacity: 0.6, marginVertical: 8 },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+    marginBottom: 8,
+  },
+  title: { fontSize: 16, fontWeight: "700", marginBottom: 2 },
+  sub: { opacity: 0.7 },
+  cancelled: { marginTop: 6, color: "#A00", fontWeight: "600" },
+  actions: {
+    marginTop: 12,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  cancelBtn: {
+    backgroundColor: "#8B0000",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  cancelBtnText: { color: "#fff", marginLeft: 6, fontWeight: "600" },
+  secondaryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#8B0000",
+    backgroundColor: "#fff",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  secondaryText: { color: "#8B0000", marginLeft: 6, fontWeight: "600" },
+});

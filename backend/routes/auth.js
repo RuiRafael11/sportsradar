@@ -11,6 +11,7 @@ const router = express.Router();
 const JWT_SECRET  = process.env.JWT_SECRET  || 'segredo123';
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '1h';
 
+// limiter anti brute-force
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -87,7 +88,7 @@ router.get('/me', requireAuth, async (req, res) => {
   }
 });
 
-// PATCH /api/auth/me
+// PATCH /api/auth/me → atualizar nome/password/pushToken
 router.patch('/me', requireAuth, async (req, res) => {
   try {
     const updates = {};
@@ -99,7 +100,12 @@ router.patch('/me', requireAuth, async (req, res) => {
       updates.password = await bcrypt.hash(String(req.body.password), 10);
     }
 
-    const updated = await User.findByIdAndUpdate(req.userId, updates, { new: true }).select('name email');
+    if (req.body.pushToken) {
+      updates.pushToken = String(req.body.pushToken);
+    }
+
+    const updated = await User.findByIdAndUpdate(req.userId, updates, { new: true })
+      .select('name email');
     if (!updated) return res.status(404).json({ msg: 'Utilizador não encontrado' });
     res.json({ msg: 'Perfil atualizado', user: updated });
   } catch (e) {
