@@ -1,79 +1,156 @@
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, Image, ActivityIndicator, StyleSheet, TouchableOpacity } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+import { api } from "../services/api";
 
-const heroByType = (type = "") => {
-  const t = (type || "").toLowerCase();
-  if (t.includes("padel")) return "https://images.unsplash.com/photo-1617957743099-1f716b795b77?q=80&w=1600&auto=format&fit=crop";
-  if (t.includes("futebol")) return "https://images.unsplash.com/photo-1517927033932-b3d18e61fb3a?q=80&w=1600&auto=format&fit=crop";
-  if (t.includes("tenis")) return "https://images.unsplash.com/photo-1510525009512-ad7fc13eefab?q=80&w=1600&auto=format&fit=crop";
-  if (t.includes("pavilh")) return "https://images.unsplash.com/photo-1502810190503-8303352d0c69?q=80&w=1600&auto=format&fit=crop";
-  return "https://images.unsplash.com/photo-1571731956672-ac8c9a859b1a?q=80&w=1600&auto=format&fit=crop";
+const COLORS = {
+  bg: "#F4F6F8",
+  card: "#FFFFFF",
+  text: "#111827",
+  sub: "#6B7280",
+  brand: "#8B0000",
 };
 
 export default function SportDetailScreen() {
-  const { params } = useRoute();
+  const route = useRoute();
   const navigation = useNavigation();
-  const venue = params?.venue;
 
-  if (!venue) {
+  // aceita várias formas + pode vir o objeto "venue" já carregado
+  const passedVenue = route?.params?.venue || null;
+  const venueId = route?.params?.venueId || route?.params?.id || route?.params?._id || passedVenue?._id || null;
+  const routeName = route?.params?.venueName || passedVenue?.name || "";
+
+  const [loading, setLoading] = useState(!passedVenue); // se já veio o objeto, não precisa loading
+  const [venue, setVenue] = useState(passedVenue);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function fetchVenue() {
+      try {
+        if (!venueId) {
+          setError("ID do recinto em falta.");
+          return;
+        }
+
+        // 1) tenta /venues/:id
+        try {
+          const r = await api.get(`/venues/${venueId}`);
+          const data = Array.isArray(r.data) ? r.data[0] : r.data;
+          if (data && data._id) {
+            if (!mounted) return;
+            setVenue(data);
+            navigation.setOptions?.({ title: data.name || "Detalhe" });
+            return;
+          }
+        } catch (e) {
+          // segue para o fallback
+        }
+
+        // 2) fallback: GET /venues e filtra
+        const rAll = await api.get("/venues");
+        const list = Array.isArray(rAll.data) ? rAll.data : [];
+        const found = list.find(
+          (v) => String(v._id) === String(venueId) || String(v.id) === String(venueId)
+        );
+        if (found) {
+          if (!mounted) return;
+          setVenue(found);
+          navigation.setOptions?.({ title: found.name || routeName || "Detalhe" });
+          return;
+        }
+
+        setError("Recinto não encontrado.");
+      } catch (e) {
+        setError(e?.response?.data?.msg || "Recinto não encontrado.");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    // se já veio o objeto por params, só define o título e acaba
+    if (passedVenue && passedVenue._id) {
+      navigation.setOptions?.({ title: passedVenue.name || "Detalhe" });
+      setLoading(false);
+    } else {
+      setLoading(true);
+      fetchVenue();
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [venueId]);
+
+  if (loading) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Recinto não encontrado</Text>
+      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator />
       </View>
     );
   }
 
-  const onSchedule = () => {
-    navigation.navigate("ScheduleEvent", {
-      venueId: venue._id,
-      venueName: venue.name,
-      venue,
-    });
-  };
+  if (error) {
+    return (
+      <View style={[styles.container, { padding: 16 }]}>
+        <Text style={{ color: COLORS.text, fontWeight: "700", marginBottom: 8 }}>{error}</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.cta}>
+          <Text style={{ color: "#fff", fontWeight: "700" }}>Voltar</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <Image source={{ uri: heroByType(venue.type) }} style={styles.hero} />
-      <View style={styles.headerCard}>
-        <Text style={styles.name}>{venue.name}</Text>
-        {!!venue.district && <Text style={styles.district}>{venue.district}</Text>}
-        {!!venue.type && <Text style={styles.type}>{venue.type}</Text>}
-        {!!venue.notes && <Text style={styles.notes}>{venue.notes}</Text>}
-      </View>
+      <Image
+        source={{
+          uri:
+            venue?.imageUrl ||
+            "https://images.unsplash.com/photo-1521417531557-69b4e1857c3b?q=80&w=1600&auto=format&fit=crop",
+        }}
+        style={{ width: "100%", height: 220 }}
+      />
+      <View style={{ padding: 16 }}>
+        <Text style={styles.title}>{venue.name}</Text>
+        <Text style={styles.meta}>
+          {String(venue.type || "").toLowerCase()} • {venue.district}
+        </Text>
 
-      <TouchableOpacity style={styles.cta} onPress={onSchedule}>
-        <Text style={styles.ctaText}>Agendar</Text>
-      </TouchableOpacity>
+        <View style={styles.row}>
+          <Ionicons name="location" size={18} color={COLORS.sub} />
+          <Text style={styles.rowText}>{venue.address || "—"}</Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.cta, { marginTop: 16 }]}
+          onPress={() =>
+            navigation.navigate("Find", {
+              screen: "ScheduleEvent",
+              params: { venueId: venue._id, venueName: venue.name },
+            })
+          }
+        >
+          <Text style={{ color: "#fff", fontWeight: "700" }}>Agendar</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F6FA" },
-  hero: { width: "100%", height: 180 },
-  headerCard: {
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 12,
-    margin: 16,
-    marginTop: -20,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  name: { fontSize: 22, fontWeight: "800", marginBottom: 6 },
-  district: { fontSize: 16, color: "#555", marginBottom: 2 },
-  type: { fontSize: 14, color: "#333", marginBottom: 8 },
-  notes: { fontSize: 13, color: "#666" },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  title: { fontSize: 24, fontWeight: "800", color: COLORS.text },
+  meta: { color: COLORS.sub, marginTop: 4 },
+  row: { flexDirection: "row", alignItems: "center", marginTop: 10 },
+  rowText: { marginLeft: 6, color: COLORS.text },
   cta: {
-    backgroundColor: "#8B0000",
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: "center",
-    marginHorizontal: 16,
+    backgroundColor: COLORS.brand,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignSelf: "flex-start",
   },
-  ctaText: { color: "#fff", fontWeight: "700", fontSize: 16 },
 });
