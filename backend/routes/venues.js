@@ -1,17 +1,19 @@
-
-console.log("📌 Rota de venues carregada!");
 const express = require('express');
+const router = express.Router();
 const Venue = require('../models/Venue');
 
-const router = express.Router();
-
-// GET /api/venues
 router.get('/', async (req, res) => {
+  const list = await Venue.find().sort('name');
+  res.json(list);
+});
+
+router.get('/:id', async (req, res) => {
   try {
-    const venues = await Venue.find();
-    res.json(venues);
-  } catch (err) {
-    res.status(500).json({ error: 'Erro a obter venues' });
+    const v = await Venue.findById(req.params.id);
+    if (!v) return res.status(404).json({ msg: 'Recinto não encontrado' });
+    res.json(v);
+  } catch (e) {
+    return res.status(400).json({ msg: 'ID inválido' });
   }
 });
 
