@@ -1,27 +1,28 @@
+// src/screens/SportDetailScreen.js
 import React, { useEffect, useState } from "react";
-import { View, Text, Image, ActivityIndicator, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../services/api";
+import { getVenueImage, ImageFallback } from "../utils/images";
 
-const COLORS = {
-  bg: "#F4F6F8",
-  card: "#FFFFFF",
-  text: "#111827",
-  sub: "#6B7280",
-  brand: "#8B0000",
-};
+const COLORS = { bg: "#F4F6F8", card: "#FFFFFF", text: "#111827", sub: "#6B7280", brand: "#8B0000" };
 
 export default function SportDetailScreen() {
   const route = useRoute();
   const navigation = useNavigation();
 
-  // aceita várias formas + pode vir o objeto "venue" já carregado
-  const passedVenue = route?.params?.venue || null;
-  const venueId = route?.params?.venueId || route?.params?.id || route?.params?._id || passedVenue?._id || null;
+  const passedVenue = route?.params?.venue || null; // pode ser Google
+  const venueId =
+    route?.params?.venueId ||
+    route?.params?.id ||
+    route?.params?._id ||
+    passedVenue?._id ||
+    null;
+
   const routeName = route?.params?.venueName || passedVenue?.name || "";
 
-  const [loading, setLoading] = useState(!passedVenue); // se já veio o objeto, não precisa loading
+  const [loading, setLoading] = useState(!passedVenue);
   const [venue, setVenue] = useState(passedVenue);
   const [error, setError] = useState("");
 
@@ -35,26 +36,23 @@ export default function SportDetailScreen() {
           return;
         }
 
-        // 1) tenta /venues/:id
-        try {
-          const r = await api.get(`/venues/${venueId}`);
-          const data = Array.isArray(r.data) ? r.data[0] : r.data;
-          if (data && data._id) {
-            if (!mounted) return;
-            setVenue(data);
-            navigation.setOptions?.({ title: data.name || "Detalhe" });
-            return;
-          }
-        } catch (e) {
-          // segue para o fallback
+        // Se for Google ("g:..."), assumimos que veio em passedVenue e não chamamos o backend
+        if (String(venueId).startsWith("g:")) return;
+
+        // tenta /venues/:id
+        const r = await api.get(`/venues/${venueId}`);
+        const data = Array.isArray(r.data) ? r.data[0] : r.data;
+        if (data && data._id) {
+          if (!mounted) return;
+          setVenue(data);
+          navigation.setOptions?.({ title: data.name || "Detalhe" });
+          return;
         }
 
-        // 2) fallback: GET /venues e filtra
+        // fallback /venues
         const rAll = await api.get("/venues");
         const list = Array.isArray(rAll.data) ? rAll.data : [];
-        const found = list.find(
-          (v) => String(v._id) === String(venueId) || String(v.id) === String(venueId)
-        );
+        const found = list.find((v) => String(v._id) === String(venueId) || String(v.id) === String(venueId));
         if (found) {
           if (!mounted) return;
           setVenue(found);
@@ -70,8 +68,7 @@ export default function SportDetailScreen() {
       }
     }
 
-    // se já veio o objeto por params, só define o título e acaba
-    if (passedVenue && passedVenue._id) {
+    if (passedVenue) {
       navigation.setOptions?.({ title: passedVenue.name || "Detalhe" });
       setLoading(false);
     } else {
@@ -79,9 +76,7 @@ export default function SportDetailScreen() {
       fetchVenue();
     }
 
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [venueId]);
 
   if (loading) {
@@ -92,10 +87,12 @@ export default function SportDetailScreen() {
     );
   }
 
-  if (error) {
+  if (!venue || error) {
     return (
       <View style={[styles.container, { padding: 16 }]}>
-        <Text style={{ color: COLORS.text, fontWeight: "700", marginBottom: 8 }}>{error}</Text>
+        <Text style={{ color: COLORS.text, fontWeight: "700", marginBottom: 8 }}>
+          {error || "Recinto não encontrado."}
+        </Text>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.cta}>
           <Text style={{ color: "#fff", fontWeight: "700" }}>Voltar</Text>
         </TouchableOpacity>
@@ -105,14 +102,9 @@ export default function SportDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <Image
-        source={{
-          uri:
-            venue?.imageUrl ||
-            "https://images.unsplash.com/photo-1521417531557-69b4e1857c3b?q=80&w=1600&auto=format&fit=crop",
-        }}
-        style={{ width: "100%", height: 220 }}
-      />
+      {/* CORREÇÃO: ImageFallback usa `uri`, não `source` */}
+      <ImageFallback uri={getVenueImage(venue)} style={{ width: "100%", height: 220 }} />
+
       <View style={{ padding: 16 }}>
         <Text style={styles.title}>{venue.name}</Text>
         <Text style={styles.meta}>
@@ -129,7 +121,11 @@ export default function SportDetailScreen() {
           onPress={() =>
             navigation.navigate("Find", {
               screen: "ScheduleEvent",
-              params: { venueId: venue._id, venueName: venue.name },
+              params: {
+                venueId: venue._id || route?.params?.venueId || venueId,
+                venueName: venue.name,
+                venue: passedVenue || null, // quando for Google, leva o objeto
+              },
             })
           }
         >
@@ -146,11 +142,5 @@ const styles = StyleSheet.create({
   meta: { color: COLORS.sub, marginTop: 4 },
   row: { flexDirection: "row", alignItems: "center", marginTop: 10 },
   rowText: { marginLeft: 6, color: COLORS.text },
-  cta: {
-    backgroundColor: COLORS.brand,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignSelf: "flex-start",
-  },
+  cta: { backgroundColor: COLORS.brand, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12, alignSelf: "flex-start" },
 });

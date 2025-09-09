@@ -5,6 +5,15 @@ import Constants from "expo-constants";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../services/api";
 
+// garante que as notificações aparecem em foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
+
 export default function PushInitializer() {
   const { user } = useAuth();
 
@@ -13,14 +22,12 @@ export default function PushInitializer() {
 
     (async () => {
       try {
-        // Pede permissão
         const { status } = await Notifications.requestPermissionsAsync();
         if (status !== "granted") {
           console.log("🔔 Permissão de notificações negada");
           return;
         }
 
-        // Obtém o token Expo
         const token = (
           await Notifications.getExpoPushTokenAsync({
             projectId: Constants.expoConfig?.extra?.eas?.projectId,
@@ -28,7 +35,7 @@ export default function PushInitializer() {
         ).data;
         console.log("🔔 Expo push token:", token);
 
-        // Envia para o backend e guarda no utilizador
+        // backend aceita pushToken ou expoPushToken
         await api.patch("/auth/me", { pushToken: token });
       } catch (e) {
         console.warn("Falha a inicializar push:", e.message);
