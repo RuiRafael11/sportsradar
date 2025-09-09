@@ -87,8 +87,23 @@ export default function ProfileScreen() {
     }, 300),
     []
   );
-
-  const onChangeCity = (t) => { setCityQuery(t); doSuggest(t); };
+const onChangeCity = async (t) => {
+  setCityQuery(t);
+  if (!t || !t.trim()) {
+    // limpar base quando o campo fica vazio
+    setBaseLat(null);
+    setBaseLng(null);
+    setBaseLabel('');
+    try {
+      await persistPrefsLocal({ baseLat: null, baseLng: null, baseLabel: '' });
+      // sinal para Home/Map refrescarem quando voltas
+      await AsyncStorage.setItem("@prefs_bump", String(Date.now()));
+    } catch {}
+    setSuggestions([]);
+    return;
+  }
+  doSuggest(t);
+};
 
   const pickSuggestion = async (s) => {
     setCityQuery(s.description);

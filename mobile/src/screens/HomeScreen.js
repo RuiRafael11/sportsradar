@@ -1,3 +1,4 @@
+// mobile/src/screens/HomeScreen.js
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   View,
@@ -32,7 +33,7 @@ const COLORS = {
 
 const ALL_SPORTS = ["padel","tenis","futsal","basquetebol","futebol","polidesportivo","pavilhao","multiusos","atletismo"];
 
-// haversine para ordenar por distância
+// haversine
 const toRad = (d) => (d * Math.PI) / 180;
 function distanceKm(a, b) {
   if (!a || !b) return Infinity;
@@ -49,6 +50,20 @@ function distanceKm(a, b) {
   return R * c;
 }
 
+// mini badges (máx 3 por card para não poluir)
+const AMENITY_BADGES = (d = {}) => {
+  const defs = [
+    d.hasLighting     ? { key: 'light',  icon: 'bulb-outline',      label: 'Luz' } : null,
+    d.hasShowers      ? { key: 'shower', icon: 'water-outline',     label: 'Duches' } : null,
+    d.hasLockerRoom   ? { key: 'locker', icon: 'shirt-outline',     label: 'Balneários' } : null,
+    d.parking         ? { key: 'park',   icon: 'car-outline',       label: 'Parque' } : null,
+    d.covered         ? { key: 'cover',  icon: 'umbrella-outline',  label: 'Coberto' } : null,
+    d.indoor          ? { key: 'indoor', icon: 'home-outline',      label: 'Interior' } : null,
+    d.equipmentRental ? { key: 'equip',  icon: 'pricetag-outline',  label: 'Aluguer' } : null,
+  ].filter(Boolean);
+  return defs.slice(0, 3); // mostra no máx 3
+};
+
 export default function HomeScreen() {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
@@ -58,12 +73,11 @@ export default function HomeScreen() {
   const [chip, setChip] = useState("all");
   const [favorites, setFavorites] = useState([]);
 
-  // prefs lidas do AsyncStorage
+  // prefs
   const [base, setBase] = useState({ lat: null, lng: null });
   const [radius, setRadius] = useState(10000);
   const [prefSports, setPrefSports] = useState([]);
 
-  // carregar favoritos do storage
   useEffect(() => {
     (async () => {
       try {
@@ -97,8 +111,7 @@ export default function HomeScreen() {
       if (raw) {
         const p = JSON.parse(raw);
         if (typeof p.baseLat === "number" && typeof p.baseLng === "number") {
-          lat = p.baseLat;
-          lng = p.baseLng;
+          lat = p.baseLat; lng = p.baseLng;
         }
         if (typeof p.radiusKm === "number") r = Math.max(1000, p.radiusKm * 1000);
         if (Array.isArray(p.sports)) sports = p.sports.map(s => String(s).toLowerCase());
@@ -117,17 +130,41 @@ export default function HomeScreen() {
       params: { lat, lng, radius: r, keywords },
     });
     const arr = Array.isArray(data) ? data : [];
-    // anexa a distância para ordenação
+
+    // 1) calcular distância
     const withDist = arr.map((it) => ({
       ...it,
       _distanceKm: (lat && lng && it.lat && it.lng) ? distanceKm({ lat, lng }, { lat: it.lat, lng: it.lng }) : null,
     }));
-    withDist.sort((a, b) => {
+
+    // 2) buscar extras em bulk (apenas para ids Google g:...)
+    const googleIds = withDist.filter(v => String(v._id).startsWith('g:')).map(v => v._id);
+    let extrasById = {};
+    if (googleIds.length) {
+      try {
+        const { data: extras } = await api.post('/venue-extras/bulk', { placeIds: googleIds });
+        // mapear por placeId
+        extrasById = (Array.isArray(extras) ? extras : []).reduce((acc, e) => {
+          if (e?.placeId && e?.details) acc[e.placeId] = e.details;
+          return acc;
+        }, {});
+      } catch { /* sem extras, segue */ }
+    }
+
+    // 3) fundir detalhes se existirem
+    const merged = withDist.map(v => {
+      const det = extrasById[v._id] || null;
+      return det ? { ...v, details: det } : v;
+    });
+
+    // ordenar por distância
+    merged.sort((a, b) => {
       const da = a._distanceKm ?? Infinity;
       const db = b._distanceKm ?? Infinity;
       return da - db;
     });
-    setItems(withDist);
+
+    setItems(merged);
   };
 
   const load = async () => {
@@ -144,7 +181,6 @@ export default function HomeScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      // lê um possível bump do perfil (não precisamos do valor, só força IO)
       await AsyncStorage.getItem("@prefs_bump");
       await fetchPlaces();
     } finally {
@@ -152,12 +188,8 @@ export default function HomeScreen() {
     }
   }, [chip]);
 
-  // 1) primeiro mount
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
-  // 2) sempre que o ecrã ganha foco OU muda o chip, recarrega
   useFocusEffect(
     useCallback(() => {
       let alive = true;
@@ -190,11 +222,11 @@ export default function HomeScreen() {
     if (!id) return;
     navigation.navigate("Find", {
       screen: "SportDetail",
-      params: { venueId: id, venueName: venue?.name || "", venue }, // passa o objeto Google
+      params: { venueId: id, venueName: venue?.name || "", venue },
     });
   };
 
-  // chips: “Todos” + modalidades (prefSports primeiro)
+  // chips
   const CHIPS = useMemo(() => {
     const set = new Set(["all", ...(prefSports.length ? prefSports : ALL_SPORTS)]);
     return Array.from(set).map((k) => ({ key: k, label: k === "all" ? "Todos" : k }));
@@ -223,6 +255,22 @@ export default function HomeScreen() {
     );
   };
 
+  // mini badges UI
+  const MiniBadges = ({ details }) => {
+    const badges = AMENITY_BADGES(details);
+    if (!badges.length) return null;
+    return (
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+        {badges.map(b => (
+          <View key={b.key} style={styles.badge}>
+            <Ionicons name={b.icon} size={14} color={COLORS.brand} />
+            <Text style={styles.badgeText}>{b.label}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
   const Card = ({ item }) => {
     const isFav = favorites.includes(item._id);
     const distanceStr =
@@ -246,6 +294,9 @@ export default function HomeScreen() {
             {(item.type || "").toLowerCase()} • {item.district}
             {distanceStr}
           </Text>
+
+          {/* mini badges */}
+          <MiniBadges details={item.details} />
 
           <TouchableOpacity onPress={() => goDetail(item)} style={styles.cta}>
             <Text style={styles.ctaText}>Detalhe</Text>
@@ -272,7 +323,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* chips horizontais */}
+      {/* chips */}
       <View style={{ paddingLeft: 12, marginBottom: 10 }}>
         <FlatList
           horizontal
@@ -334,6 +385,8 @@ export default function HomeScreen() {
                         {(v.type || "").toLowerCase()} • {v.district}
                         {v._distanceKm != null ? ` • ${v._distanceKm.toFixed(1)} km` : ""}
                       </Text>
+                      {/* mini badges tb nos favoritos */}
+                      <MiniBadges details={v.details} />
                     </View>
                     <TouchableOpacity
                       onPress={() => toggleFavorite(v._id)}
@@ -377,6 +430,8 @@ export default function HomeScreen() {
                         {(v.type || "").toLowerCase()} • {v.district}
                         {v._distanceKm != null ? ` • ${v._distanceKm.toFixed(1)} km` : ""}
                       </Text>
+                      {/* mini badges em linha */}
+                      <MiniBadges details={v.details} />
                     </View>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
@@ -451,8 +506,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
+    marginTop: 10,
   },
   ctaText: { color: "white", fontWeight: "700" },
+
+  // badge
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "#fff",
+  },
+  badgeText: { fontSize: 12, color: COLORS.text },
 
   // favs
   favCard: {
