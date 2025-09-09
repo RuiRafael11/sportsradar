@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, Alert,
-  StyleSheet, ScrollView, ActivityIndicator
+  StyleSheet, ScrollView
 } from "react-native";
 import * as Location from 'expo-location';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -18,6 +18,7 @@ const COLORS = {
 };
 
 const ALL_SPORTS = ["Padel","Tenis","Futsal","Basquetebol","Futebol","Polidesportivo","Pavilhao","Multiusos","Atletismo"];
+const norm = (s) => String(s || "").toLowerCase(); // para keywords / backend
 
 export default function ProfileScreen() {
   const navigation = useNavigation();
@@ -28,20 +29,18 @@ export default function ProfileScreen() {
   const [password, setPassword] = useState("");
   const [savingAccount, setSavingAccount] = useState(false);
 
-  // prefs
+  // prefs (locais + apresentadas)
   const [radiusKm, setRadiusKm] = useState(10);
   const [cityQuery, setCityQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [baseLat, setBaseLat] = useState(null);
   const [baseLng, setBaseLng] = useState(null);
   const [baseLabel, setBaseLabel] = useState("");
-  const [sports, setSports] = useState(["Tenis","Futebol"]); // exemplo
+  const [sports, setSports] = useState(["Tenis","Futebol"]);
 
-  useEffect(() => {
-    setName(user?.name || "");
-  }, [user?._id]);
+  useEffect(() => { setName(user?.name || ""); }, [user?._id]);
 
-  // carregar @prefs
+  // carregar prefs locais (primeiro arranque)
   useEffect(() => {
     (async () => {
       try {
@@ -58,34 +57,36 @@ export default function ProfileScreen() {
     })();
   }, []);
 
-  const persistPrefs = async (patch) => {
-    try {
-      const raw = await AsyncStorage.getItem("@prefs");
-      const prev = raw ? JSON.parse(raw) : {};
-      const next = { ...prev, ...patch };
-      await AsyncStorage.setItem("@prefs", JSON.stringify(next));
-    } catch {}
+  const persistPrefsLocal = async (patch) => {
+    const raw = await AsyncStorage.getItem("@prefs");
+    const prev = raw ? JSON.parse(raw) : {};
+    const next = { ...prev, ...patch };
+    await AsyncStorage.setItem("@prefs", JSON.stringify(next));
+    // bump para o mapa saber que há prefs novas quando voltar ao foco
+    await AsyncStorage.setItem("@prefs_bump", Date.now().toString());
   };
 
-  const inc = () => { const v = Math.min(100, radiusKm + 5); setRadiusKm(v); persistPrefs({ radiusKm: v }); };
-  const dec = () => { const v = Math.max(1, radiusKm - 5); setRadiusKm(v); persistPrefs({ radiusKm: v }); };
+  const inc = () => { const v = Math.min(100, radiusKm + 5); setRadiusKm(v); persistPrefsLocal({ radiusKm: v }); };
+  const dec = () => { const v = Math.max(1, radiusKm - 5); setRadiusKm(v); persistPrefsLocal({ radiusKm: v }); };
 
-  // chips
   const toggleSport = (s) => {
     const has = sports.includes(s);
     const next = has ? sports.filter(x => x !== s) : [...sports, s];
-    setSports(next); persistPrefs({ sports: next });
+    setSports(next);
+    persistPrefsLocal({ sports: next });
   };
 
   // autocomplete cidades
-  const doSuggest = useMemo(() =>
-    debounce(async (q) => {
+  const doSuggest = useMemo(
+    () => debounce(async (q) => {
       try {
         if (!q || q.length < 2) { setSuggestions([]); return; }
         const { data } = await api.get('/geo/suggest', { params: { q } });
         setSuggestions(Array.isArray(data) ? data : []);
       } catch { setSuggestions([]); }
-    }, 300), []);
+    }, 300),
+    []
+  );
 
   const onChangeCity = (t) => { setCityQuery(t); doSuggest(t); };
 
@@ -95,7 +96,7 @@ export default function ProfileScreen() {
     try {
       const { data } = await api.get('/geo/place', { params: { placeId: s.placeId } });
       setBaseLat(data.lat); setBaseLng(data.lng); setBaseLabel(data.name || s.description);
-      await persistPrefs({ baseLat: data.lat, baseLng: data.lng, baseLabel: data.name || s.description });
+      await persistPrefsLocal({ baseLat: data.lat, baseLng: data.lng, baseLabel: data.name || s.description });
       Alert.alert("Localização", `Base definida: ${data.name}`);
     } catch { Alert.alert("Erro", "Não foi possível obter a localização."); }
   };
@@ -105,10 +106,11 @@ export default function ProfileScreen() {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return Alert.alert("Permissão", "Concede acesso à localização.");
       const geo = await Location.getCurrentPositionAsync({});
-      setBaseLat(geo.coords.latitude);
-      setBaseLng(geo.coords.longitude);
-      setBaseLabel("A minha localização");
-      await persistPrefs({ baseLat: geo.coords.latitude, baseLng: geo.coords.longitude, baseLabel: "A minha localização" });
+      const lat = geo.coords.latitude;
+      const lng = geo.coords.longitude;
+      setBaseLat(lat); setBaseLng(lng); setBaseLabel("A minha localização");
+      await persistPrefsLocal({ baseLat: lat, baseLng: lng, baseLabel: "A minha localização" });
+      Alert.alert("Localização", "Vamos usar a tua localização atual.");
     } catch { Alert.alert("Erro", "Falha a obter localização."); }
   };
 
@@ -130,6 +132,26 @@ export default function ProfileScreen() {
       Alert.alert("Erro", e?.response?.data?.msg || "Falha ao atualizar perfil.");
     } finally {
       setSavingAccount(false);
+    }
+  };
+
+  // guardar PREFERÊNCIAS no backend + local
+  const onSavePrefs = async () => {
+    try {
+      const prefsPayload = {
+        radiusMeters: Math.max(1000, radiusKm * 1000),
+        sports: sports.map(norm),
+        homeLocation: (baseLat && baseLng) ? { lat: baseLat, lng: baseLng } : undefined,
+      };
+      await api.patch("/auth/me", { preferences: prefsPayload });
+      await persistPrefsLocal({
+        radiusKm,
+        baseLat, baseLng, baseLabel,
+        sports
+      });
+      Alert.alert("Preferências", "Preferências guardadas.");
+    } catch (e) {
+      Alert.alert("Erro", e?.response?.data?.msg || "Falha ao guardar preferências.");
     }
   };
 
@@ -206,6 +228,10 @@ export default function ProfileScreen() {
             );
           })}
         </View>
+
+        <TouchableOpacity onPress={onSavePrefs} style={[styles.primaryBtn, { marginTop: 14 }]}>
+          <Text style={styles.primaryBtnText}>Guardar preferências</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Suporte */}
@@ -238,54 +264,22 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.card, marginHorizontal: 16, marginTop: 12,
-    padding: 16, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border,
-  },
+  card: { backgroundColor: COLORS.card, marginHorizontal: 16, marginTop: 12, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border },
   sectionTitle: { fontWeight: "700", color: COLORS.text, fontSize: 18, marginBottom: 6 },
   label: { color: COLORS.sub, marginTop: 6, marginBottom: 6 },
-  input: {
-    height: 46, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
-    paddingHorizontal: 12, backgroundColor: "#fff", fontSize: 16,
-  },
-  primaryBtn: {
-    marginTop: 14, height: 48, backgroundColor: COLORS.primary,
-    borderRadius: 12, alignItems: "center", justifyContent: "center",
-  },
+  input: { height: 46, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 12, backgroundColor: "#fff", fontSize: 16 },
+  primaryBtn: { marginTop: 14, height: 48, backgroundColor: COLORS.primary, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   primaryBtnText: { color: "#fff", fontWeight: "700", fontSize: 16 },
-
-  roundBtn: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary,
-    alignItems: "center", justifyContent: "center",
-  },
+  roundBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary, alignItems: "center", justifyContent: "center" },
   roundBtnTxt: { color: "#fff", fontSize: 22, fontWeight: "800", marginTop: -2 },
-
-  dropdown: {
-    marginTop: 6, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, backgroundColor: "#fff"
-  },
+  dropdown: { marginTop: 6, borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, backgroundColor: "#fff" },
   dropItem: { paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: COLORS.border },
-
-  outlineBtn: {
-    height: 44, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary,
-    backgroundColor: "#fff", alignItems: "center", justifyContent: "center", flexDirection: "row"
-  },
+  outlineBtn: { height: 44, borderRadius: 10, borderWidth: 1, borderColor: COLORS.primary, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", flexDirection: "row" },
   outlineBtnText: { color: COLORS.primary, fontWeight: "700" },
-
-  chip: {
-    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
-    borderWidth: 1, borderColor: COLORS.border, backgroundColor: "#fff",
-  },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: COLORS.border, backgroundColor: "#fff" },
   chipTxt: { color: COLORS.text, fontWeight: "600" },
-
-  linkRow: {
-    marginTop: 4, height: 50, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border,
-    paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-  },
+  linkRow: { marginTop: 4, height: 50, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   linkText: { flex: 1, marginLeft: 8, color: COLORS.text, fontSize: 16 },
-
-  logoutBtn: {
-    height: 48, borderRadius: 12, borderWidth: 1, borderColor: "#fecaca",
-    backgroundColor: "#fff1f2", alignItems: "center", justifyContent: "center",
-  },
+  logoutBtn: { height: 48, borderRadius: 12, borderWidth: 1, borderColor: "#fecaca", backgroundColor: "#fff1f2", alignItems: "center", justifyContent: "center" },
   logoutText: { color: COLORS.danger, fontWeight: "700", fontSize: 16 },
 });
