@@ -3,15 +3,15 @@ import React, { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, Alert, ActivityIndicator, StyleSheet } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
-import * as Notifications from "expo-notifications";
 import CalendarComponent from "../components/CalendarComponent";
 import TimePickerComponent from "../components/TimePickerComponent";
 import { api } from "../services/api";
 
 export default function ScheduleEventScreen({ navigation, route }) {
+  const passedVenue = route?.params?.venue || null; // ← pode vir do Google/Mapa/Home
   const [venues, setVenues] = useState([]);
-  const [venueId, setVenueId] = useState(route?.params?.venueId || null);
-  const [venueName, setVenueName] = useState(route?.params?.venueName || "");
+  const [venueId, setVenueId] = useState(route?.params?.venueId || passedVenue?._id || null);
+  const [venueName, setVenueName] = useState(route?.params?.venueName || passedVenue?.name || "");
   const [loadingVenues, setLoadingVenues] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
@@ -21,7 +21,7 @@ export default function ScheduleEventScreen({ navigation, route }) {
     if (!venueId) {
       setLoadingVenues(true);
       api.get("/venues")
-        .then(r => {
+        .then((r) => {
           const arr = r.data || [];
           if (!mounted) return;
           setVenues(arr);
@@ -36,24 +36,24 @@ export default function ScheduleEventScreen({ navigation, route }) {
     return () => { mounted = false; };
   }, [venueId]);
 
-  const onConfirm = async () => {
+  const onConfirm = () => {
     if (!venueId) return Alert.alert("Falta recinto", "Escolhe um recinto.");
     if (!selectedDay || !selectedTime) return Alert.alert("Atenção", "Seleciona o dia e a hora.");
 
-    // 👉 segue para a folha de pagamento com os parâmetros necessários
     navigation.navigate("PaymentCheckout", {
       venueId,
       venueName,
+      venue: passedVenue || null, // ← só quando existir (Google/Mapa)
       date: selectedDay,
       time: selectedTime,
-      amountCents: 1200, // 12,00 €
+      amountCents: 1200,
       currency: "eur",
     });
   };
 
   return (
     <KeyboardAwareScrollView style={styles.container} contentContainerStyle={styles.content} enableOnAndroid keyboardShouldPersistTaps="handled" extraScrollHeight={80}>
-      {!route?.params?.venueId && (
+      {!route?.params?.venueId && !passedVenue && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recinto</Text>
           {loadingVenues ? (

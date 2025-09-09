@@ -26,12 +26,13 @@ export function AuthProvider({ children }) {
     await AsyncStorage.setItem('token', token);
     setUser(user);
   };
+const register = async (name, email, password, opts = {}) => {
+  const { acceptedTerms = false, acceptedPrivacy = false } = opts;
+  const { token, user } = await registerRequest(name, email, password, { acceptedTerms, acceptedPrivacy });
+  await AsyncStorage.setItem('token', token);
+  setUser(user);
+};
 
-  const register = async (name, email, password) => {
-    const { token, user } = await registerRequest(name, email, password);
-    await AsyncStorage.setItem('token', token);
-    setUser(user);
-  };
 
   const logout = async () => {
     await AsyncStorage.removeItem('token');

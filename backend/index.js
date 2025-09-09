@@ -1,53 +1,71 @@
 // backend/index.js
 require('dotenv').config();
-const express = require('express');
+const express  = require('express');
 const mongoose = require('mongoose');
-const cors = require('cors');
-
+const cors     = require('cors');
+const morgan   = require('morgan');
+const geoRouter = require('./routes/geo');
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-// --- DEBUG: ver se a ENV está a ser lida ---
-const rawUri = process.env.MONGODB_URI;
-if (!rawUri) {
+// ---- Middlewares base
+app.set('trust proxy', 1);
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(morgan('dev'));
+app.use('/api/geo', geoRouter);
+// ---- ENV / Mongo URI
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) {
   console.error('❌ MONGODB_URI não definida. Tens o .env na pasta backend?');
   process.exit(1);
 }
-// mascara password só para debug de consola
-const masked = rawUri.replace(/(mongodb\+srv:\/\/[^:]+:)[^@]+/, '$1*****');
+const masked = MONGODB_URI.replace(/(mongodb\+srv:\/\/[^:]+:)[^@]+/, '$1*****');
 console.log('🔎 URI (mascarada):', masked);
 
-// --- Rotas (carregam já, mas só ouvimos depois da BD ligar) ---
-const venuesRouter   = require('./routes/venues');     // 📌 Rota de venues
-const authRouter     = require('./routes/auth');       // 🔐 Rotas de auth
-const bookingsRouter = require('./routes/bookings');   // 🗓️ Reservas (POST/GET/DELETE)
-const paymentsRouter = require('./routes/payments');   // 💳 Stripe PaymentSheet
-
-app.use('/api/venues', venuesRouter);
-app.use('/api/auth', authRouter);
-app.use('/api/bookings', bookingsRouter);
-app.use('/api/payments', paymentsRouter);
-
-// ping stripe (opcional para debug rápido)
-app.get('/api/payments/ping', (req, res) => {
+// ---- Health checks (úteis para debug)
+app.get('/api/health', (_req, res) =>
+  res.json({ ok: true, env: process.env.NODE_ENV || 'dev' })
+);
+app.get('/api/payments/ping', (_req, res) =>
   res.json({
     ok: true,
     hasSecret: !!process.env.STRIPE_SECRET_KEY,
-    message: process.env.STRIPE_SECRET_KEY ? 'Stripe key presente' : '⚠️ STRIPE_SECRET_KEY ausente no .env',
-  });
+    message: process.env.STRIPE_SECRET_KEY
+      ? 'Stripe key presente'
+      : '⚠️ STRIPE_SECRET_KEY ausente no .env',
+  })
+);
+
+// ---- Rotas
+const venuesRouter   = require('./routes/venues');    // 📌 Venues
+const authRouter     = require('./routes/auth');      // 🔐 Auth
+const bookingsRouter = require('./routes/bookings');  // 🗓️ Reservas
+const paymentsRouter = require('./routes/payments');  // 💳 Stripe
+const placesRouter   = require('./routes/places');    // 🌍 Google Places proxy
+
+app.use('/api/places',   placesRouter);
+app.use('/api/venues',   venuesRouter);
+app.use('/api/auth',     authRouter);
+app.use('/api/bookings', bookingsRouter);
+app.use('/api/payments', paymentsRouter);
+
+// ---- 404 & error handler
+app.use((req, res) => res.status(404).json({ msg: 'Rota não encontrada' }));
+app.use((err, req, res, _next) => {
+  console.error('❌ Unhandled error:', err);
+  res.status(err.status || 500).json({ msg: err.message || 'Erro no servidor' });
 });
 
-// --- Liga à BD e só depois arranca o servidor ---
+// ---- Liga à BD e arranca servidor
 const PORT = process.env.PORT || 5000;
-console.log('A ligar a:', (process.env.MONGODB_URI || '').replace(/(\/\/[^:]+:)[^@]+/, '$1*****'));
-
-mongoose.connect(rawUri)
+mongoose.set('strictQuery', true);
+mongoose
+  .connect(MONGODB_URI)
   .then(() => {
     console.log('✅ Ligado ao MongoDB');
     app.listen(PORT, () => console.log(`🚀 Servidor a correr na porta ${PORT}`));
   })
-  .catch(err => {
+  .catch((err) => {
     console.error('❌ Erro ao ligar ao MongoDB:', err.message);
     process.exit(1);
   });

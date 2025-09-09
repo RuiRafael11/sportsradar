@@ -1,4 +1,3 @@
-// mobile/src/screens/HomeScreen.js
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   View,
@@ -6,17 +5,17 @@ import {
   FlatList,
   TextInput,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   StyleSheet,
   ScrollView,
+  RefreshControl,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { api } from "../services/api";
+import { getVenueImage, ImageFallback } from "../utils/images";
 
-// --- Paleta
 const COLORS = {
   bg: "#F4F6F8",
   card: "#FFFFFF",
@@ -31,89 +30,38 @@ const COLORS = {
   heart: "#8B0000",
 };
 
-// --- Imagens por tipo (fallback)
-const IMAGE_BY_TYPE = {
-  padel:
-    "https://images.unsplash.com/photo-1605647533135-77b1f0228f6b?q=80&w=1600&auto=format&fit=crop",
-  "padel/tenis":
-    "https://images.unsplash.com/photo-1517649763962-0c623066013b?q=80&w=1600&auto=format&fit=crop",
-  tenis:
-    "https://images.unsplash.com/photo-1542482378-6c2a0d167c68?q=80&w=1600&auto=format&fit=crop",
-  "campo de futebol":
-    "https://images.unsplash.com/photo-1543326727-cf6c39f0f1f4?q=80&w=1600&auto=format&fit=crop",
-  "campo de futebol/futsal":
-    "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?q=80&w=1600&auto=format&fit=crop",
-  futsal:
-    "https://images.unsplash.com/photo-1593349481046-d8c1dc9d4641?q=80&w=1600&auto=format&fit=crop",
-  "futsal/basquetebol":
-    "https://images.unsplash.com/photo-1546519638-68e109498ffc?q=80&w=1600&auto=format&fit=crop",
-  basquetebol:
-    "https://images.unsplash.com/photo-1519861531473-9200262188bf?q=80&w=1600&auto=format&fit=crop",
-  pavilhao:
-    "https://images.unsplash.com/photo-1517646287270-cf3f147f1cf4?q=80&w=1600&auto=format&fit=crop",
-  polidesportivo:
-    "https://images.unsplash.com/photo-1521417531557-69b4e1857c3b?q=80&w=1600&auto=format&fit=crop",
-  multiusos:
-    "https://images.unsplash.com/photo-1530893609608-32a9af3aa95c?q=80&w=1600&auto=format&fit=crop",
-  "campo/atletismo":
-    "https://images.unsplash.com/photo-1461896836934-ffe607ba8211?q=80&w=1600&auto=format&fit=crop",
-};
+const ALL_SPORTS = ["padel","tenis","futsal","basquetebol","futebol","polidesportivo","pavilhao","multiusos","atletismo"];
 
-function getVenueImage(venue) {
-  // se o backend já devolver "imageUrl", usa
-  if (venue?.imageUrl) return venue.imageUrl;
-  // senão tenta por tipo (case-insensitive)
-  const t = String(venue?.type || "")
-    .toLowerCase()
-    .trim();
-  // procurar chave que “inclua” o tipo
-  const key =
-    Object.keys(IMAGE_BY_TYPE).find((k) => t.includes(k)) ||
-    Object.keys(IMAGE_BY_TYPE).find((k) => k.includes(t));
-  return IMAGE_BY_TYPE[key] || IMAGE_BY_TYPE["polidesportivo"];
+// haversine para ordenar por distância
+const toRad = (d) => (d * Math.PI) / 180;
+function distanceKm(a, b) {
+  if (!a || !b) return Infinity;
+  const R = 6371;
+  const dLat = toRad((b.lat || 0) - (a.lat || 0));
+  const dLng = toRad((b.lng || 0) - (a.lng || 0));
+  const s1 =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(a.lat || 0)) *
+      Math.cos(toRad(b.lat || 0)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(s1), Math.sqrt(1 - s1));
+  return R * c;
 }
-
-// chips de categorias
-const CHIPS = [
-  { key: "all", label: "Todos", icon: "location" },
-  { key: "campo de futebol", label: "campo de futebol", icon: "football" },
-  { key: "campo de futebol/futsal", label: "campo de futebol/futsal", icon: "soccer" },
-  { key: "futsal/basquetebol", label: "futsal/basquetebol", icon: "basketball" },
-  { key: "padel", label: "padel", icon: "tennisball" },
-  { key: "padel/tenis", label: "padel/tenis", icon: "tennisball" },
-  { key: "tenis", label: "tenis", icon: "tennisball" },
-  { key: "polidesportivo", label: "polidesportivo", icon: "medal" },
-  { key: "pavilhao", label: "pavilhao", icon: "business" },
-  { key: "multiusos", label: "multiusos", icon: "grid" },
-  { key: "campo/atletismo", label: "campo/atletismo", icon: "speedometer" },
-];
 
 export default function HomeScreen() {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
-  const [venues, setVenues] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [items, setItems] = useState([]);
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState("all");
   const [favorites, setFavorites] = useState([]);
 
-  // carregar recintos
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const r = await api.get("/venues");
-        if (!mounted) return;
-        setVenues(Array.isArray(r.data) ? r.data : []);
-      } catch (e) {
-        setVenues([]);
-      } finally {
-        setLoading(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  // prefs lidas do AsyncStorage
+  const [base, setBase] = useState({ lat: null, lng: null });
+  const [radius, setRadius] = useState(10000);
+  const [prefSports, setPrefSports] = useState([]);
 
   // carregar favoritos do storage
   useEffect(() => {
@@ -142,36 +90,118 @@ export default function HomeScreen() {
     [favorites, saveFavs]
   );
 
+  const readPrefs = async () => {
+    let lat = 39.5, lng = -8.0, r = 10000, sports = [];
+    try {
+      const raw = await AsyncStorage.getItem("@prefs");
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (typeof p.baseLat === "number" && typeof p.baseLng === "number") {
+          lat = p.baseLat;
+          lng = p.baseLng;
+        }
+        if (typeof p.radiusKm === "number") r = Math.max(1000, p.radiusKm * 1000);
+        if (Array.isArray(p.sports)) sports = p.sports.map(s => String(s).toLowerCase());
+      }
+    } catch {}
+    setBase({ lat, lng });
+    setRadius(r);
+    setPrefSports(sports);
+    return { lat, lng, r, sports };
+  };
+
+  const fetchPlaces = async () => {
+    const { lat, lng, r, sports } = await readPrefs();
+    const keywords = (chip !== "all" ? [chip] : (sports.length ? sports : ALL_SPORTS)).join(",");
+    const { data } = await api.get("/places/search", {
+      params: { lat, lng, radius: r, keywords },
+    });
+    const arr = Array.isArray(data) ? data : [];
+    // anexa a distância para ordenação
+    const withDist = arr.map((it) => ({
+      ...it,
+      _distanceKm: (lat && lng && it.lat && it.lng) ? distanceKm({ lat, lng }, { lat: it.lat, lng: it.lng }) : null,
+    }));
+    withDist.sort((a, b) => {
+      const da = a._distanceKm ?? Infinity;
+      const db = b._distanceKm ?? Infinity;
+      return da - db;
+    });
+    setItems(withDist);
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      await fetchPlaces();
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // lê um possível bump do perfil (não precisamos do valor, só força IO)
+      await AsyncStorage.getItem("@prefs_bump");
+      await fetchPlaces();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [chip]);
+
+  // 1) primeiro mount
+  useEffect(() => {
+    load();
+  }, []);
+
+  // 2) sempre que o ecrã ganha foco OU muda o chip, recarrega
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        await AsyncStorage.getItem("@prefs_bump");
+        if (alive) fetchPlaces();
+      })();
+      return () => { alive = false; };
+    }, [chip])
+  );
+
+  // filtragem por texto
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return venues.filter((v) => {
+    return items.filter((v) => {
       const okQuery =
         !q ||
         v.name?.toLowerCase().includes(q) ||
         v.district?.toLowerCase().includes(q) ||
         v.type?.toLowerCase().includes(q);
-      const okChip = chip === "all" || v.type?.toLowerCase().includes(chip);
-      return okQuery && okChip;
+      return okQuery;
     });
-  }, [venues, query, chip]);
+  }, [items, query]);
 
   const suggestions = filtered.slice(0, 6);
   const favList = filtered.filter((v) => favorites.includes(v._id));
 
-const goDetail = (venue) => {
-  const id = venue?._id || venue?.id;
-  if (!id) {
-    console.warn("Sem id do recinto:", venue);
-    return;
-  }
-  navigation.navigate("Find", {
-    screen: "SportDetail",
-    params: { venueId: id, venueName: venue?.name || "", venue }, // ← passa o objeto todo
-  });
-};
+  const goDetail = (venue) => {
+    const id = venue?._id;
+    if (!id) return;
+    navigation.navigate("Find", {
+      screen: "SportDetail",
+      params: { venueId: id, venueName: venue?.name || "", venue }, // passa o objeto Google
+    });
+  };
+
+  // chips: “Todos” + modalidades (prefSports primeiro)
+  const CHIPS = useMemo(() => {
+    const set = new Set(["all", ...(prefSports.length ? prefSports : ALL_SPORTS)]);
+    return Array.from(set).map((k) => ({ key: k, label: k === "all" ? "Todos" : k }));
+  }, [prefSports]);
+
   const renderChip = ({ item }) => {
     const active = chip === item.key;
-    const iconName = item.icon;
     return (
       <TouchableOpacity
         onPress={() => setChip(item.key)}
@@ -181,7 +211,7 @@ const goDetail = (venue) => {
         ]}
       >
         <Ionicons
-          name={iconName}
+          name={active ? "pricetag" : "pricetag-outline"}
           size={16}
           color={active ? COLORS.chipActiveText : COLORS.text}
           style={{ marginRight: 6 }}
@@ -194,22 +224,27 @@ const goDetail = (venue) => {
   };
 
   const Card = ({ item }) => {
-    const img = getVenueImage(item);
     const isFav = favorites.includes(item._id);
+    const distanceStr =
+      item._distanceKm != null ? ` • ${item._distanceKm.toFixed(1)} km` : "";
     return (
       <TouchableOpacity onPress={() => goDetail(item)} activeOpacity={0.9} style={styles.card}>
-        <Image source={{ uri: img }} style={styles.cardImage} />
+        <ImageFallback uri={getVenueImage(item)} style={styles.cardImage} />
         <View style={{ padding: 14 }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <Text numberOfLines={1} style={styles.cardTitle}>
               {item.name}
             </Text>
-            <TouchableOpacity onPress={() => toggleFavorite(item._id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity
+              onPress={() => toggleFavorite(item._id)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <Ionicons name={isFav ? "heart" : "heart-outline"} size={22} color={COLORS.heart} />
             </TouchableOpacity>
           </View>
           <Text style={styles.cardMeta}>
-            {item.type?.toLowerCase()} • {item.district}
+            {(item.type || "").toLowerCase()} • {item.district}
+            {distanceStr}
           </Text>
 
           <TouchableOpacity onPress={() => goDetail(item)} style={styles.cta}>
@@ -237,7 +272,7 @@ const goDetail = (venue) => {
         </View>
       </View>
 
-      {/* chips horizontais (altura fixa média) */}
+      {/* chips horizontais */}
       <View style={{ paddingLeft: 12, marginBottom: 10 }}>
         <FlatList
           horizontal
@@ -290,13 +325,14 @@ const goDetail = (venue) => {
               >
                 {favList.map((v) => (
                   <TouchableOpacity key={v._id} onPress={() => goDetail(v)} activeOpacity={0.9} style={styles.favCard}>
-                    <Image source={{ uri: getVenueImage(v) }} style={styles.favImg} />
+                    <ImageFallback uri={getVenueImage(v)} style={styles.favImg} />
                     <View style={{ padding: 10 }}>
                       <Text numberOfLines={1} style={styles.favTitle}>
                         {v.name}
                       </Text>
                       <Text style={styles.favMeta}>
-                        {v.type?.toLowerCase()} • {v.district}
+                        {(v.type || "").toLowerCase()} • {v.district}
+                        {v._distanceKm != null ? ` • ${v._distanceKm.toFixed(1)} km` : ""}
                       </Text>
                     </View>
                     <TouchableOpacity
@@ -338,7 +374,8 @@ const goDetail = (venue) => {
                         {v.name}
                       </Text>
                       <Text style={styles.rowMeta}>
-                        {v.type?.toLowerCase()} • {v.district}
+                        {(v.type || "").toLowerCase()} • {v.district}
+                        {v._distanceKm != null ? ` • ${v._distanceKm.toFixed(1)} km` : ""}
                       </Text>
                     </View>
                   </View>
@@ -349,6 +386,9 @@ const goDetail = (venue) => {
           </View>
         }
         contentContainerStyle={{ paddingBottom: 24 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.brand} />
+        }
       />
     </View>
   );
@@ -378,12 +418,12 @@ const styles = StyleSheet.create({
   },
   searchInput: { marginLeft: 8, flex: 1, fontSize: 15, color: COLORS.text },
 
-  // chips
+  // chip
   chip: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 14,
-    height: 38, // altura média e consistente
+    height: 38,
     borderRadius: 20,
     backgroundColor: COLORS.chipBg,
     borderWidth: 1,

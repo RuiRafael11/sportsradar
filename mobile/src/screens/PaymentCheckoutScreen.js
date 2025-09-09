@@ -1,4 +1,4 @@
-// src/screens/PaymentCheckoutScreen.js
+// mobile/src/screens/PaymentCheckoutScreen.js
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, Alert, ActivityIndicator, StyleSheet } from "react-native";
 import { useStripe } from "@stripe/stripe-react-native";
@@ -10,8 +10,18 @@ export default function PaymentCheckoutScreen({ navigation, route }) {
   const { user } = useAuth();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
-  const { venueId, venueName, date, time, amountCents = 1200, currency = "eur" } = route?.params || {};
+  const {
+    venueId,
+    venueName,
+    date,
+    time,
+    amountCents = 1200,
+    currency = "eur",
+    venue, // ← pode vir o objeto completo (quando veio do Google/Map)
+  } = route?.params || {};
+
   const valid = useMemo(() => !!venueId && !!date && !!time, [venueId, date, time]);
+  const isGoogle = String(venueId || "").startsWith("g:");
 
   const [loading, setLoading] = useState(true);
   const [paymentIntentId, setPaymentIntentId] = useState(null);
@@ -62,18 +72,35 @@ export default function PaymentCheckoutScreen({ navigation, route }) {
       const cap = await api.post("/payments/capture", { paymentIntentId });
       const receiptUrl = cap?.data?.receiptUrl || null;
 
-      await api.post("/bookings", {
-        venueId, date, time,
+      // payload para criar reserva
+      const payload = {
+        venueId,
+        date,
+        time,
+        amount: amountCents,
+        currency,
         paymentIntentId,
         receiptUrl,
-      });
+        ...(isGoogle
+          ? {
+              // metadados necessários quando o venue é Google
+              venueName: venue?.name || venueName || "",
+              venueType: venue?.type || "",
+              venueDistrict: venue?.district || "",
+              venueAddress: venue?.address || "",
+              imageUrl: venue?.imageUrl || "",
+            }
+          : {}),
+      };
+
+      await api.post("/bookings", payload);
 
       // 🔔 notificação local imediata
       try {
         await Notifications.scheduleNotificationAsync({
           content: {
             title: "Reserva confirmada ✅",
-            body: `${venueName || "Recinto"} — ${date} ${time}`,
+            body: `${payload.venueName || venueName || "Recinto"} — ${date} ${time}`,
           },
           trigger: null,
         });
