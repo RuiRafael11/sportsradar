@@ -22,7 +22,7 @@ export default function HistoryScreen() {
     setLoading(true);
     try {
       const { data } = await api.get("/bookings/my");
-      setItems(data || []);
+      setItems(Array.isArray(data) ? data : []);
     } catch {
       Alert.alert("Erro", "Não foi possível carregar as reservas.");
     } finally {
@@ -48,20 +48,32 @@ export default function HistoryScreen() {
     return { upcoming: up, past: pa };
   }, [items]);
 
-  const openReceipt = (paymentIntentId) => {
-    // Abre no Stripe Dashboard (modo test)
-    const url = `https://dashboard.stripe.com/test/payments/${paymentIntentId}`;
-    Linking.openURL(url).catch(() =>
-      Alert.alert("Ops", "Não foi possível abrir o recibo.")
-    );
+  const openReceipt = (booking) => {
+    // 1) Se o backend guardou o URL do recibo, usa isso
+    if (booking?.receiptUrl) {
+      Linking.openURL(booking.receiptUrl).catch(() =>
+        Alert.alert("Ops", "Não foi possível abrir o recibo.")
+      );
+      return;
+    }
+
+    // 2) Caso contrário, abre o payment no dashboard Stripe (modo test)
+    if (booking?.paymentIntentId) {
+      const url = `https://dashboard.stripe.com/test/payments/${booking.paymentIntentId}`;
+      Linking.openURL(url).catch(() =>
+        Alert.alert("Ops", "Não foi possível abrir o recibo.")
+      );
+      return;
+    }
+
+    Alert.alert("Sem recibo", "Esta reserva não tem recibo disponível.");
   };
 
   const confirmCancel = (booking) => {
+    const title = booking.venueName || booking.venue?.name || "o recinto";
     Alert.alert(
       "Cancelar reserva",
-      `Queres cancelar ${booking.venue?.name || "o recinto"} em ${booking.date} às ${
-        booking.time
-      }?`,
+      `Queres cancelar ${title} em ${booking.date} às ${booking.time}?`,
       [
         { text: "Não", style: "cancel" },
         { text: "Sim", style: "destructive", onPress: () => cancel(booking) },
@@ -73,7 +85,9 @@ export default function HistoryScreen() {
     try {
       const { data } = await api.delete(`/bookings/${booking._id}`);
       setItems((prev) =>
-        prev.map((b) => (b._id === booking._id ? { ...b, status: "cancelled" } : b))
+        prev.map((b) =>
+          b._id === booking._id ? { ...b, status: "cancelled" } : b
+        )
       );
       Alert.alert("Reserva cancelada", data?.msg || "");
     } catch (e) {
@@ -86,23 +100,39 @@ export default function HistoryScreen() {
 
   const renderItem = ({ item }) => {
     const cancelled = item.status === "cancelled";
+    const title = item.venueName || item.venue?.name || "Recinto";
+    const metaType =
+      (item.venueType ||
+        item.venue?.type ||
+        "").toString().trim().toLowerCase();
+    const metaDistrict =
+      (item.venueDistrict || item.venue?.district || "").toString().trim();
+
     return (
       <View style={s.card}>
         <View style={{ flex: 1 }}>
           <Text style={s.title} numberOfLines={1}>
-            {item.venue?.name || "Recinto"}
+            {title}
           </Text>
+
           <Text style={s.sub}>
             {item.date} às {item.time}
           </Text>
+
+          {(metaType || metaDistrict) ? (
+            <Text style={[s.sub, { marginTop: 2 }]}>
+              {metaType}{metaType && metaDistrict ? " • " : ""}{metaDistrict}
+            </Text>
+          ) : null}
+
           {cancelled ? <Text style={s.cancelled}>Cancelada</Text> : null}
         </View>
 
         <View style={s.actions}>
-          {item.paymentIntentId ? (
+          {(item.receiptUrl || item.paymentIntentId) ? (
             <TouchableOpacity
               style={s.secondaryBtn}
-              onPress={() => openReceipt(item.paymentIntentId)}
+              onPress={() => openReceipt(item)}
             >
               <Ionicons name="receipt-outline" size={18} color="#8B0000" />
               <Text style={s.secondaryText}>Ver recibo</Text>
@@ -110,7 +140,10 @@ export default function HistoryScreen() {
           ) : null}
 
           {!cancelled && (
-            <TouchableOpacity style={s.cancelBtn} onPress={() => confirmCancel(item)}>
+            <TouchableOpacity
+              style={s.cancelBtn}
+              onPress={() => confirmCancel(item)}
+            >
               <Ionicons name="trash-outline" size={18} color="#fff" />
               <Text style={s.cancelBtnText}>Cancelar</Text>
             </TouchableOpacity>
@@ -196,6 +229,7 @@ const s = StyleSheet.create({
     backgroundColor: "#fff",
     flexDirection: "row",
     alignItems: "center",
+    marginRight: 8,
   },
   secondaryText: { color: "#8B0000", marginLeft: 6, fontWeight: "600" },
 });

@@ -19,22 +19,23 @@ import HistoryScreen from "./src/screens/HistoryScreen";
 import ScheduleEventScreen from "./src/screens/ScheduleEventScreen";
 import MapScreen from "./src/screens/MapScreen";
 import SportDetailScreen from "./src/screens/SportDetailScreen";
-import PushInitializer from "./src/components/PushInitializer"; // se já tens este ficheiro
+import HelpScreen from "./src/screens/HelpScreen";
+import AboutScreen from "./src/screens/AboutScreen";
+
+import PushInitializer from "./src/components/PushInitializer";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const FindStack = createNativeStackNavigator();
 
-// 🔑 Publishable key vinda do app.json -> extra.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY
 const PUBLISHABLE_KEY =
   Constants?.expoConfig?.extra?.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
   process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
   "";
 
-// Log de sanidade (vês no Metro / terminal do Expo – não imprime a chave inteira)
 console.log("Stripe publishable key presente?", !!PUBLISHABLE_KEY);
 
-// Stack da aba Find
+// Stack da aba Find (apenas e só as rotas de Find)
 function FindNavigator() {
   return (
     <FindStack.Navigator screenOptions={{ headerShown: true, title: "" }}>
@@ -77,14 +78,28 @@ function AppTabs() {
   );
 }
 
-// Decide auth
+// Decide auth + rotas globais (Help/About aqui!)
 function RootNavigator() {
   const { user, booting } = useAuth();
   if (booting) return null;
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {user ? (
-        <Stack.Screen name="Main" component={AppTabs} />
+        <>
+          <Stack.Screen name="Main" component={AppTabs} />
+          {/* páginas “globais” fora das tabs */}
+          <Stack.Screen
+            name="Help"
+            component={HelpScreen}
+            options={{ headerShown: true, title: "Ajuda" }}
+          />
+          <Stack.Screen
+            name="About"
+            component={AboutScreen}
+            options={{ headerShown: true, title: "Sobre" }}
+          />
+        </>
       ) : (
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
@@ -99,12 +114,11 @@ export default function App() {
   return (
     <StripeProvider
       publishableKey={PUBLISHABLE_KEY}
-      merchantIdentifier="merchant.com.sportsradar" // iOS Apple Pay (podes trocar mais tarde)
-      urlScheme="exp+mobile" // returnURL para métodos com redirect
+      merchantIdentifier="merchant.com.sportsradar"
+      urlScheme="exp+mobile"
     >
       <AuthProvider>
         <NavigationContainer>
-          {/* Push token saver (opcional) */}
           <PushInitializer />
           <RootNavigator />
         </NavigationContainer>
