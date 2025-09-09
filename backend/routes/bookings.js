@@ -2,53 +2,106 @@
 const express = require('express');
 const router = express.Router();
 const Booking = require('../models/Booking');
+
+
+
 const Venue = require('../models/Venue');
 const requireAuth = require('../middleware/auth');
 const { sendEmail } = require('../mail');
 const { sendPush } = require('../push');
 const User = require('../models/User');
 
+// helper: testa se é ObjectId de 24 hex
+const isMongoId = (s) => /^[a-fA-F0-9]{24}$/.test(String(s || ''));
+
 // Minhas reservas
 router.get('/my', requireAuth, async (req, res) => {
   const list = await Booking.find({ user: req.userId })
     .sort({ createdAt: -1 })
+    // se 'venue' existir (interno) popula; se for Google, fica null mas tens os metadados no próprio doc
     .populate('venue', 'name district type');
   res.json(list);
 });
 
-// Criar reserva (já com pagamento OK)
+// Criar reserva (aceita venue interno OU Google)
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const { venueId, date, time, paymentIntentId = null, receiptUrl = null } = req.body || {};
+    const {
+      venueId,
+      date,
+      time,
+      paymentIntentId = null,
+      receiptUrl = null,
+
+      // metadados opcionais (necessários quando o venue é Google)
+      venueName,
+      venueType,
+      venueDistrict,
+      venueAddress,
+      imageUrl,
+
+      amount,
+      currency,
+    } = req.body || {};
+
     if (!venueId || !date || !time) {
       return res.status(400).json({ msg: 'Dados em falta (venueId, date, time)' });
     }
 
-    const venue = await Venue.findById(venueId);
-    if (!venue) return res.status(404).json({ msg: 'Recinto não encontrado' });
+    // vamos montar vMeta com base na origem do venue
+    let vMeta = {
+      venueId: String(venueId),
+      venue: undefined, // ObjectId quando for interno
+      venueName: venueName || '',
+      venueType: venueType || '',
+      venueDistrict: venueDistrict || '',
+      venueAddress: venueAddress || '',
+      imageUrl: imageUrl || undefined,
+    };
+
+    if (isMongoId(venueId)) {
+      // venue da tua BD -> obtém metadados do documento
+      const v = await Venue.findById(venueId);
+      if (!v) return res.status(404).json({ msg: 'Recinto não encontrado' });
+
+      vMeta = {
+        ...vMeta,
+        venue: v._id,
+        venueName: v.name,
+        venueType: v.type,
+        venueDistrict: v.district,
+        venueAddress: v.address,
+        imageUrl: v.imageUrl || undefined,
+      };
+    }
+    // se não for MongoId, assume Google: já usamos os metadados vindos do body
 
     const booking = await Booking.create({
       user: req.userId,
-      venue: venue._id,
+      ...vMeta,
       date,
       time,
       status: 'confirmed',
       paymentIntentId,
       receiptUrl,
+      amount: Number(amount ?? 1200),
+      currency: String(currency || 'eur').toLowerCase(),
     });
 
     // Notificações
     try {
       const me = await User.findById(req.userId).select('email expoPushToken name');
       const title = 'Reserva confirmada ✅';
-      const msg = `${venue.name} — ${date} ${time}`;
+      const msg = `${booking.venueName || 'Recinto'} — ${booking.date} ${booking.time}`;
 
       if (me?.email) {
         await sendEmail({
           to: me.email,
           subject: title,
           text: msg,
-          html: `<p>Olá ${me.name || ''},</p><p>${msg}</p>${receiptUrl ? `<p><a href="${receiptUrl}" target="_blank">Ver recibo</a></p>` : ''}`,
+          html: `<p>Olá ${me.name || ''},</p><p>${msg}</p>${
+            booking.receiptUrl ? `<p><a href="${booking.receiptUrl}" target="_blank">Ver recibo</a></p>` : ''
+          }`,
         });
       }
       if (me?.expoPushToken) {
@@ -60,7 +113,7 @@ router.post('/', requireAuth, async (req, res) => {
 
     res.status(201).json(booking);
   } catch (e) {
-    console.error(e);
+    console.error('BOOKINGS_POST ERROR:', e);
     res.status(500).json({ msg: 'Erro ao criar reserva' });
   }
 });
