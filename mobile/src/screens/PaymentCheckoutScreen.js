@@ -2,9 +2,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, Alert, ActivityIndicator, StyleSheet } from "react-native";
 import { useStripe } from "@stripe/stripe-react-native";
-import * as Notifications from "expo-notifications";
 import { api } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { STRIPE_PUBLISHABLE_KEY } from "../config/env";
 
 export default function PaymentCheckoutScreen({ navigation, route }) {
   const { user } = useAuth();
@@ -30,6 +30,14 @@ export default function PaymentCheckoutScreen({ navigation, route }) {
     const prepare = async () => {
       if (!valid) {
         Alert.alert("Pagamento", "Dados em falta (venueId, date, time)");
+        navigation.goBack();
+        return;
+      }
+      if (!STRIPE_PUBLISHABLE_KEY) {
+        Alert.alert(
+          "Pagamento indisponivel",
+          "A chave publica Stripe nao esta configurada. Define EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY no mobile/.env."
+        );
         navigation.goBack();
         return;
       }
@@ -97,6 +105,7 @@ export default function PaymentCheckoutScreen({ navigation, route }) {
 
       // 🔔 notificação local imediata
       try {
+        const Notifications = require("expo-notifications");
         await Notifications.scheduleNotificationAsync({
           content: {
             title: "Reserva confirmada ✅",

@@ -137,9 +137,10 @@ export default function SportDetailScreen() {
 
         <TouchableOpacity
           style={[styles.cta, { marginTop: 16 }]}
-          onPress={() => navigation.navigate("Find", {
-            screen: "ScheduleEvent",
-            params: { venueId, venueName: venue.name, venue } // passa o objeto já fundido
+          onPress={() => navigation.navigate("ScheduleEvent", {
+            venueId,
+            venueName: venue.name,
+            venue,
           })}
         >
           <Text style={{ color: "#fff", fontWeight: "700" }}>Agendar</Text>

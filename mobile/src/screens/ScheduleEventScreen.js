@@ -9,14 +9,13 @@ import { api } from "../services/api";
 import { Ionicons } from "@expo/vector-icons";
 
 const COLORS = { bg: "#f6f6f6", card:"#fff", text:"#111827", sub:"#6B7280", border:"#E5E7EB", brand:"#8B0000" };
-const isMongoId = (s) => /^[a-fA-F0-9]{24}$/.test(String(s || ''));
 
 export default function ScheduleEventScreen({ navigation, route }) {
-  const passedVenue = route?.params?.venue || null; // pode vir do Google/Mapa/Home
+  const passedVenue = route?.params?.venue || null;
   const [venues, setVenues] = useState([]);
   const [venueId, setVenueId] = useState(route?.params?.venueId || passedVenue?._id || null);
   const [venueName, setVenueName] = useState(route?.params?.venueName || passedVenue?.name || "");
-  const [venueDetails, setVenueDetails] = useState(passedVenue || null); // objeto completo para mostrar detalhes
+  const [venueDetails, setVenueDetails] = useState(passedVenue || null);
 
   const [loadingVenues, setLoadingVenues] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
@@ -24,47 +23,82 @@ export default function ScheduleEventScreen({ navigation, route }) {
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
 
-// (usa a tua versão atual e troca apenas a parte que carrega detalhes)
-useEffect(() => {
-  let mounted = true;
+  useEffect(() => {
+    let mounted = true;
 
-  const load = async () => {
-    if (!venueId) return;
+    const loadVenues = async () => {
+      if (route?.params?.venueId || passedVenue) return;
 
-    // se for id interno -> /venues/:id
-    if (!String(venueId).startsWith("g:")) {
-      setLoadingDetails(true);
-      api.get(`/venues/${venueId}`)
-        .then(r => { if (mounted) setVenueDetails(r.data || null); })
-        .catch(() => { if (mounted) setVenueDetails(null); })
-        .finally(() => setLoadingDetails(false));
-      return;
-    }
+      try {
+        setLoadingVenues(true);
+        const { data } = await api.get("/venues");
+        if (!mounted) return;
 
-    // se for Google -> usa passedVenue e tenta extras
-    const base = passedVenue || { _id: venueId, name: route?.params?.venueName || "" };
-    setVenueDetails(base);
-    try {
-      const extra = await api.get(`/venue-extras/${encodeURIComponent(venueId)}`).then(r => r.data).catch(() => null);
+        const list = Array.isArray(data) ? data : [];
+        setVenues(list);
+
+        if (!venueId && list.length > 0) {
+          const first = list[0];
+          setVenueId(first._id);
+          setVenueName(first.name || "");
+          setVenueDetails(first);
+        }
+      } catch (e) {
+        if (mounted) {
+          Alert.alert("Recintos", e?.userMessage || "Nao foi possivel carregar os recintos.");
+        }
+      } finally {
+        if (mounted) setLoadingVenues(false);
+      }
+    };
+
+    loadVenues();
+    return () => { mounted = false; };
+  }, [route?.params?.venueId, passedVenue]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadDetails = async () => {
+      if (!venueId) return;
+
+      if (!String(venueId).startsWith("g:")) {
+        try {
+          setLoadingDetails(true);
+          const { data } = await api.get(`/venues/${venueId}`);
+          if (mounted) setVenueDetails(data || null);
+        } catch {
+          if (mounted) setVenueDetails(null);
+        } finally {
+          if (mounted) setLoadingDetails(false);
+        }
+        return;
+      }
+
+      const base = passedVenue || { _id: venueId, name: route?.params?.venueName || "" };
+      setVenueDetails(base);
+
+      const extra = await api.get(`/venue-extras/${encodeURIComponent(venueId)}`)
+        .then(r => r.data)
+        .catch(() => null);
+
       if (mounted && extra?.details) {
         setVenueDetails({ ...base, details: extra.details });
       }
-    } finally { /* nada */ }
-  };
+    };
 
-  load();
-  return () => { mounted = false; };
-}, [venueId]);
-
+    loadDetails();
+    return () => { mounted = false; };
+  }, [venueId, passedVenue, route?.params?.venueName]);
 
   const onConfirm = () => {
     if (!venueId) return Alert.alert("Falta recinto", "Escolhe um recinto.");
-    if (!selectedDay || !selectedTime) return Alert.alert("Atenção", "Seleciona o dia e a hora.");
+    if (!selectedDay || !selectedTime) return Alert.alert("Atencao", "Seleciona o dia e a hora.");
 
     navigation.navigate("PaymentCheckout", {
       venueId,
       venueName,
-      venue: passedVenue || venueDetails || null, // leva o objeto (útil p/ Google)
+      venue: passedVenue || venueDetails || null,
       date: selectedDay,
       time: selectedTime,
       amountCents: 1200,
@@ -78,13 +112,14 @@ useEffect(() => {
       <View style={[s.dot, ok ? s.dotOn : s.dotOff]}>
         <Ionicons name={icon} size={16} color={ok ? "#fff" : COLORS.sub} />
       </View>
-      <Text style={[s.amenityTxt, ok ? { fontWeight:"700", color: COLORS.text } : { color: COLORS.sub }]}>{label}{ok ? "" : " —"}</Text>
+      <Text style={[s.amenityTxt, ok ? { fontWeight:"700", color: COLORS.text } : { color: COLORS.sub }]}>
+        {label}{ok ? "" : " -"}
+      </Text>
     </View>
   );
 
   return (
     <KeyboardAwareScrollView style={s.container} contentContainerStyle={s.content} enableOnAndroid keyboardShouldPersistTaps="handled" extraScrollHeight={80}>
-      {/* Picker de recinto (apenas quando não veio por param/passedVenue) */}
       {!route?.params?.venueId && !passedVenue && (
         <View style={s.section}>
           <Text style={s.sectionTitle}>Recinto</Text>
@@ -101,6 +136,9 @@ useEffect(() => {
                   setVenueDetails(v || null);
                 }}
               >
+                {!venues.length ? (
+                  <Picker.Item label="Sem recintos disponiveis" value={null} />
+                ) : null}
                 {venues.map((v) => (
                   <Picker.Item key={v._id} label={v.name} value={v._id} />
                 ))}
@@ -110,7 +148,6 @@ useEffect(() => {
         </View>
       )}
 
-      {/* DETALHES DO RECINTO */}
       <View style={s.section}>
         <Text style={s.sectionTitle}>Detalhes do recinto</Text>
 
@@ -120,14 +157,14 @@ useEffect(() => {
           <View style={s.card}>
             <Text style={s.title}>{venueDetails.name}</Text>
             <Text style={s.meta}>
-              {String(venueDetails.type || "").toLowerCase()} • {venueDetails.district}
+              {String(venueDetails.type || "").toLowerCase()} - {venueDetails.district || ""}
             </Text>
             {venueDetails.address ? <Text style={[s.meta, { marginTop: 2 }]}>{venueDetails.address}</Text> : null}
 
             <View style={s.amenitiesRow}>
-              {amenity(!!d.hasLockerRoom, "shirt-outline", "Balneários")}
+              {amenity(!!d.hasLockerRoom, "shirt-outline", "Balnearios")}
               {amenity(!!d.hasShowers, "water-outline", "Duches")}
-              {amenity(!!d.hasLighting, "bulb-outline", "Iluminação")}
+              {amenity(!!d.hasLighting, "bulb-outline", "Iluminacao")}
               {amenity(!!d.covered, "umbrella-outline", "Coberto")}
               {amenity(!!d.indoor, "home-outline", "Interior")}
               {amenity(!!d.parking, "car-outline", "Estacion.")}
@@ -135,52 +172,45 @@ useEffect(() => {
             </View>
 
             <View style={{ marginTop: 8 }}>
+              <Text style={s.kv}>Piso: <Text style={s.kvVal}>{d.surface || "-"}</Text></Text>
               <Text style={s.kv}>
-                Piso: <Text style={s.kvVal}>{d.surface || "—"}</Text>
-              </Text>
-              <Text style={s.kv}>
-                Dimensões:{" "}
+                Dimensoes:{" "}
                 <Text style={s.kvVal}>
-                  {d.lengthMeters ? `${d.lengthMeters}m` : "—"} × {d.widthMeters ? `${d.widthMeters}m` : "—"}
+                  {d.lengthMeters ? `${d.lengthMeters}m` : "-"} x {d.widthMeters ? `${d.widthMeters}m` : "-"}
                 </Text>
               </Text>
               <Text style={s.kv}>
-                Preço/hora:{" "}
+                Preco/hora:{" "}
                 <Text style={s.kvVal}>
-                  {d.pricePerHour != null ? `${Number(d.pricePerHour).toFixed(2)} €` : "—"}
+                  {d.pricePerHour != null ? `${Number(d.pricePerHour).toFixed(2)} EUR` : "-"}
                 </Text>
               </Text>
-              <Text style={s.kv}>
-                Horário: <Text style={s.kvVal}>{d.openingHours || "—"}</Text>
-              </Text>
+              <Text style={s.kv}>Horario: <Text style={s.kvVal}>{d.openingHours || "-"}</Text></Text>
               <Text style={s.kv}>
                 Contacto:{" "}
                 <Text style={s.kvVal}>
-                  {d?.contact?.phone || d?.contact?.email || d?.contact?.website || "—"}
+                  {d?.contact?.phone || d?.contact?.email || d?.contact?.website || "-"}
                 </Text>
               </Text>
             </View>
           </View>
         ) : (
-          <Text style={{ color: COLORS.sub }}>Sem detalhes disponíveis.</Text>
+          <Text style={{ color: COLORS.sub }}>Sem detalhes disponiveis.</Text>
         )}
       </View>
 
-      {/* Dia */}
-      <View className="section" style={s.section}>
+      <View style={s.section}>
         <Text style={s.sectionTitle}>Dia</Text>
         <CalendarComponent onDaySelect={setSelectedDay} />
         {selectedDay ? <Text>Selecionado: {selectedDay}</Text> : null}
       </View>
 
-      {/* Hora */}
       <View style={s.section}>
         <Text style={s.sectionTitle}>Hora</Text>
         <TimePickerComponent selectedTime={selectedTime} onTimeChange={setSelectedTime} />
         {selectedTime ? <Text>Selecionado: {selectedTime}</Text> : null}
       </View>
 
-      {/* CTA */}
       <View style={{ flex: 1, justifyContent: "flex-end", marginTop: 24 }}>
         <TouchableOpacity style={s.confirmBtn} onPress={onConfirm}>
           <Text style={s.confirmText}>Confirmar</Text>

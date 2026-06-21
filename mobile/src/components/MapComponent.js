@@ -5,13 +5,15 @@ import MapView, { Marker, Callout } from 'react-native-maps';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import { api } from '../services/api';
+import { api, getApiErrorMessage } from '../services/api';
 
 const DEFAULT_KEYWORDS = ['padel','futebol','futsal','tenis','polidesportivo'];
 
 export default function MapComponent({ navigation }) {
   const [region, setRegion] = useState(null);
   const [markers, setMarkers] = useState([]);
+  const [loadingMarkers, setLoadingMarkers] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const load = useCallback(async () => {
     // base defaults
@@ -34,13 +36,17 @@ export default function MapComponent({ navigation }) {
       }
     } catch {}
 
-    // se continuar por defeito, tenta GPS
+    // se continuar por defeito, tenta GPS; se falhar, usa o centro de Portugal
     if (lat === 39.5 && lng === -8.0) {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        const geo = await Location.getCurrentPositionAsync({});
-        lat = geo.coords.latitude;
-        lng = geo.coords.longitude;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const geo = await Location.getCurrentPositionAsync({});
+          lat = geo.coords.latitude;
+          lng = geo.coords.longitude;
+        }
+      } catch {
+        // Keep the default region so the map never stays stuck on the spinner.
       }
     }
 
@@ -49,13 +55,17 @@ export default function MapComponent({ navigation }) {
 
     // fetch Places
     try {
+      setLoadingMarkers(true);
       const r = await api.get('/places/search', {
         params: { lat, lng, radius, keywords: keywords.join(',') }
       });
       setMarkers(Array.isArray(r.data) ? r.data : []);
+      setLoadError('');
     } catch (e) {
-      console.warn('places/search failed:', e?.response?.data?.msg || e.message);
       setMarkers([]);
+      setLoadError(getApiErrorMessage(e, 'Nao foi possivel carregar recintos no mapa.'));
+    } finally {
+      setLoadingMarkers(false);
     }
   }, []);
 
@@ -75,16 +85,42 @@ export default function MapComponent({ navigation }) {
   }
 
   return (
-    <MapView style={{ flex:1 }} region={region} onRegionChangeComplete={setRegion}>
-      {markers.map(m => (
-        <Marker key={m._id} coordinate={{ latitude: m.lat, longitude: m.lng }}>
-          <Callout onPress={() => navigation.navigate('SportDetail', { venueId: m._id, venue: m })}>
-            <Text style={{ fontWeight:'700' }}>{m.name}</Text>
-            <Text>{(m.type || '').toLowerCase()}</Text>
-            <Text style={{ color:'#8B0000', marginTop:4 }}>Tocar para ver detalhe</Text>
-          </Callout>
-        </Marker>
-      ))}
-    </MapView>
+    <View style={{ flex:1 }}>
+      <MapView style={{ flex:1 }} region={region} onRegionChangeComplete={setRegion}>
+        {markers
+          .filter(m => Number.isFinite(Number(m.lat)) && Number.isFinite(Number(m.lng)))
+          .map(m => (
+            <Marker key={m._id} coordinate={{ latitude: Number(m.lat), longitude: Number(m.lng) }}>
+              <Callout onPress={() => navigation.navigate('SportDetail', { venueId: m._id, venue: m })}>
+                <Text style={{ fontWeight:'700' }}>{m.name}</Text>
+                <Text>{(m.type || '').toLowerCase()}</Text>
+                <Text style={{ color:'#8B0000', marginTop:4 }}>Tocar para ver detalhe</Text>
+              </Callout>
+            </Marker>
+          ))}
+      </MapView>
+
+      {(loadingMarkers || loadError || markers.length === 0) ? (
+        <View style={{
+          position:'absolute',
+          left:16,
+          right:16,
+          bottom:24,
+          backgroundColor:'#fff',
+          borderRadius:12,
+          padding:12,
+          borderWidth:1,
+          borderColor:'#E5E7EB',
+        }}>
+          {loadingMarkers ? (
+            <ActivityIndicator />
+          ) : (
+            <Text style={{ color:'#111827' }}>
+              {loadError || 'Sem recintos no mapa. Confirma as preferencias ou a configuracao do Google Places.'}
+            </Text>
+          )}
+        </View>
+      ) : null}
+    </View>
   );
 }

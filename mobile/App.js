@@ -58,7 +58,7 @@ function AppTabs() {
         component={FindNavigator}
         options={{ tabBarIcon: ({ color, size }) => <Ionicons name="search" color={color} size={size} /> }}
         listeners={({ navigation }) => ({
-          tabPress: () => navigation.navigate("Find", { screen: "Map" }),
+          tabPress: () => navigation.jumpTo("Find", { screen: "Map" }),
         })}
       />
       <Tab.Screen

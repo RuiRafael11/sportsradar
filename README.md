@@ -62,6 +62,17 @@ npm run dev
 ```
 
 Fill `backend/.env` with local/test values before running the server.
+For the current LAN setup, the backend should be reachable from desktop and phone at:
+
+```text
+http://192.168.1.74:5000/api/health
+```
+
+Expected health response:
+
+```json
+{ "ok": true, "env": "development" }
+```
 
 Important variables:
 
@@ -88,7 +99,28 @@ Important variables:
 - `EXPO_PUBLIC_API_BASE_URL`
 - `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 
+Use the API URL that matches where Expo is running:
+
+- Physical phone on the same Wi-Fi: `EXPO_PUBLIC_API_BASE_URL=http://192.168.1.74:5000/api`
+- Android emulator: `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:5000/api`
+- iOS simulator or web: `EXPO_PUBLIC_API_BASE_URL=http://localhost:5000/api`
+
 The committed `android/` folder means the app is Expo prebuild/native-hybrid. Use `npm run android` only when Android tooling is configured locally.
+
+### Local Smoke Checks
+
+After starting the backend, verify:
+
+```bash
+curl http://192.168.1.74:5000/api/health
+curl http://192.168.1.74:5000/api/places/ping
+```
+
+`/api/places/ping` should return `hasKey: true` only when `GOOGLE_PLACES_KEY` is configured and authorized for the required Google Places APIs. If it is false, search/map screens should show an empty or configuration message instead of crashing.
+
+Stripe requires `STRIPE_SECRET_KEY` on the backend and `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` on the mobile app. Without those values, payment preparation will fail gracefully and bookings that require payment cannot be completed.
+
+Expo Go does not support every native notification/payment behavior. Push token registration is skipped in Expo Go or when no EAS project id is configured; the rest of the app should still run.
 
 ## API Summary
 

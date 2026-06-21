@@ -14,7 +14,7 @@ import {
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
-import { api } from "../services/api";
+import { api, getApiErrorMessage } from "../services/api";
 import { getVenueImage, ImageFallback } from "../utils/images";
 
 const COLORS = {
@@ -68,6 +68,7 @@ export default function HomeScreen() {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [items, setItems] = useState([]);
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState("all");
@@ -130,6 +131,7 @@ export default function HomeScreen() {
       params: { lat, lng, radius: r, keywords },
     });
     const arr = Array.isArray(data) ? data : [];
+    setLoadError("");
 
     // 1) calcular distância
     const withDist = arr.map((it) => ({
@@ -171,8 +173,9 @@ export default function HomeScreen() {
     setLoading(true);
     try {
       await fetchPlaces();
-    } catch {
+    } catch (e) {
       setItems([]);
+      setLoadError(getApiErrorMessage(e, "Nao foi possivel carregar recintos."));
     } finally {
       setLoading(false);
     }
@@ -183,6 +186,9 @@ export default function HomeScreen() {
     try {
       await AsyncStorage.getItem("@prefs_bump");
       await fetchPlaces();
+    } catch (e) {
+      setItems([]);
+      setLoadError(getApiErrorMessage(e, "Nao foi possivel atualizar recintos."));
     } finally {
       setRefreshing(false);
     }
@@ -195,7 +201,14 @@ export default function HomeScreen() {
       let alive = true;
       (async () => {
         await AsyncStorage.getItem("@prefs_bump");
-        if (alive) fetchPlaces();
+        if (alive) {
+          try {
+            await fetchPlaces();
+          } catch (e) {
+            setItems([]);
+            setLoadError(getApiErrorMessage(e, "Nao foi possivel carregar recintos."));
+          }
+        }
       })();
       return () => { alive = false; };
     }, [chip])
@@ -337,9 +350,13 @@ export default function HomeScreen() {
 
       {/* sugestões */}
       <Text style={styles.sectionTitle}>Sugestões</Text>
-      {suggestions.length === 0 && (
+      {loadError ? (
         <Text style={{ paddingHorizontal: 16, color: COLORS.sub, marginBottom: 8 }}>
-          Sem resultados para este filtro.
+          {loadError}
+        </Text>
+      ) : suggestions.length === 0 && (
+        <Text style={{ paddingHorizontal: 16, color: COLORS.sub, marginBottom: 8 }}>
+          Sem resultados. Confirma as preferencias ou a configuracao do Google Places.
         </Text>
       )}
     </View>
@@ -407,6 +424,11 @@ export default function HomeScreen() {
             {/* todos */}
             <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Todos</Text>
             <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
+              {filtered.length === 0 && !loadError ? (
+                <Text style={{ color: COLORS.sub, marginBottom: 8 }}>
+                  Nao ha recintos para apresentar neste momento.
+                </Text>
+              ) : null}
               {filtered.map((v) => (
                 <TouchableOpacity
                   key={v._id}
