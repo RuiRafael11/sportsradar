@@ -10,6 +10,13 @@ const requireAuth = require('../middleware/auth');
 const { sendEmail } = require('../mail');
 const { sendPush } = require('../push');
 const User = require('../models/User');
+const { getStripeClient } = require('../services/stripeClient');
+const {
+  isValidDateString,
+  isValidTimeString,
+  normalizeCurrency,
+  parsePositiveInteger,
+} = require('../utils/validation');
 
 // helper: testa se é ObjectId de 24 hex
 const isMongoId = (s) => /^[a-fA-F0-9]{24}$/.test(String(s || ''));
@@ -47,6 +54,26 @@ router.post('/', requireAuth, async (req, res) => {
     if (!venueId || !date || !time) {
       return res.status(400).json({ msg: 'Dados em falta (venueId, date, time)' });
     }
+    if (!isValidDateString(date) || !isValidTimeString(time)) {
+      return res.status(400).json({ msg: 'date/time inválidos' });
+    }
+
+    const parsedAmount = parsePositiveInteger(amount ?? 1200);
+    const parsedCurrency = normalizeCurrency(currency || 'eur');
+    if (!parsedAmount || !parsedCurrency) {
+      return res.status(400).json({ msg: 'amount/currency inválidos' });
+    }
+
+    const existing = await Booking.findOne({
+      venueId: String(venueId),
+      date,
+      time,
+      status: 'confirmed',
+    }).lean();
+
+    if (existing) {
+      return res.status(409).json({ msg: 'Já existe uma reserva confirmada para este horário' });
+    }
 
     // vamos montar vMeta com base na origem do venue
     let vMeta = {
@@ -76,6 +103,28 @@ router.post('/', requireAuth, async (req, res) => {
     }
     // se não for MongoId, assume Google: já usamos os metadados vindos do body
 
+    if (!vMeta.venue && !vMeta.venueName) {
+      return res.status(400).json({ msg: 'venueName é obrigatório para recintos Google Places' });
+    }
+
+    if (process.env.REQUIRE_PAYMENT_FOR_BOOKINGS !== 'false') {
+      if (!paymentIntentId) {
+        return res.status(400).json({ msg: 'paymentIntentId em falta' });
+      }
+
+      const stripe = getStripeClient();
+      const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
+        expand: ['latest_charge'],
+      });
+
+      if (pi.status !== 'succeeded') {
+        return res.status(402).json({ msg: 'Pagamento ainda não confirmado' });
+      }
+      if (pi.amount !== parsedAmount || pi.currency !== parsedCurrency) {
+        return res.status(400).json({ msg: 'Pagamento não corresponde ao valor da reserva' });
+      }
+    }
+
     const booking = await Booking.create({
       user: req.userId,
       ...vMeta,
@@ -84,8 +133,8 @@ router.post('/', requireAuth, async (req, res) => {
       status: 'confirmed',
       paymentIntentId,
       receiptUrl,
-      amount: Number(amount ?? 1200),
-      currency: String(currency || 'eur').toLowerCase(),
+      amount: parsedAmount,
+      currency: parsedCurrency,
     });
 
     // Notificações
@@ -113,8 +162,11 @@ router.post('/', requireAuth, async (req, res) => {
 
     res.status(201).json(booking);
   } catch (e) {
+    if (e?.code === 11000) {
+      return res.status(409).json({ msg: 'Já existe uma reserva confirmada para este horário' });
+    }
     console.error('BOOKINGS_POST ERROR:', e);
-    res.status(500).json({ msg: 'Erro ao criar reserva' });
+    res.status(e.status || 500).json({ msg: e.message || 'Erro ao criar reserva' });
   }
 });
 

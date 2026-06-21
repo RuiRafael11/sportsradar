@@ -2,16 +2,12 @@
 const express = require('express');
 const router = express.Router();
 const requireAuth = require('../middleware/auth');
-
-// ===== Stripe client com SECRET do .env =====
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-if (!STRIPE_SECRET_KEY) {
-  console.warn('⚠️ STRIPE_SECRET_KEY não definida no .env');
-}
-const stripe = require('stripe')(STRIPE_SECRET_KEY);
+const { getStripeClient } = require('../services/stripeClient');
+const { normalizeCurrency, parsePositiveInteger } = require('../utils/validation');
 
 // (opcional) expor a publishable para o cliente preparar PaymentSheet
-const PUBLISHABLE_KEY = process.env.PUBLISHABLE_KEY || process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
+const getPublishableKey = () =>
+  process.env.PUBLISHABLE_KEY || process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
 
 /**
  * Healthcheck rápido
@@ -19,8 +15,8 @@ const PUBLISHABLE_KEY = process.env.PUBLISHABLE_KEY || process.env.EXPO_PUBLIC_S
 router.get('/ping', (req, res) => {
   res.json({
     ok: true,
-    hasSecret: Boolean(STRIPE_SECRET_KEY),
-    hasPublishable: Boolean(PUBLISHABLE_KEY),
+    hasSecret: Boolean(process.env.STRIPE_SECRET_KEY),
+    hasPublishable: Boolean(getPublishableKey()),
   });
 });
 
@@ -33,13 +29,15 @@ router.get('/ping', (req, res) => {
  */
 router.post('/payment-sheet', requireAuth, async (req, res) => {
   try {
-    const amount = Number(req.body?.amount ?? 1200); // default 12.00€
-    const currency = String(req.body?.currency || 'eur').toLowerCase();
+    const amount = parsePositiveInteger(req.body?.amount ?? 1200);
+    const currency = normalizeCurrency(req.body?.currency || 'eur');
     const customerEmail = req.body?.customerEmail || undefined;
 
-    if (!STRIPE_SECRET_KEY) {
-      return res.status(500).json({ msg: 'Stripe secret key em falta no servidor' });
+    if (!amount || !currency) {
+      return res.status(400).json({ msg: 'amount/currency inválidos' });
     }
+
+    const stripe = getStripeClient();
 
     // 1) Customer (podes persistir o customerId no teu User se quiseres)
     const customer = await stripe.customers.create(
@@ -64,7 +62,7 @@ router.post('/payment-sheet', requireAuth, async (req, res) => {
       paymentIntent: paymentIntent.client_secret,
       ephemeralKey: ephemeralKey.secret,
       customer: customer.id,
-      publishableKey: PUBLISHABLE_KEY, // o cliente pode usar esta se precisar
+      publishableKey: getPublishableKey(), // o cliente pode usar esta se precisar
       paymentIntentId: paymentIntent.id,
     });
   } catch (e) {
@@ -84,6 +82,8 @@ router.post('/capture', requireAuth, async (req, res) => {
     if (!paymentIntentId) {
       return res.status(400).json({ msg: 'paymentIntentId em falta' });
     }
+
+    const stripe = getStripeClient();
 
     // Obter o PI para ler latest_charge (no modo automático já vai “requires_capture: false”)
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
