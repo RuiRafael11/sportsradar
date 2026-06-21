@@ -1,0 +1,4 @@
+interface:
+  display_name: "mongodb-mongoose"
+  short_description: "Project rescue workflow for mongodb-mongoose"
+  default_prompt: "Use the mongodb-mongoose skill for SportsRadar rescue work."

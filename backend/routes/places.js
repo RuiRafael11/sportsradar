@@ -9,6 +9,7 @@ const GOOGLE_PLACES_KEY =
   process.env.GOOGLE_PLACES_API_KEY ||
   process.env.GOOGLE_API_KEY ||
   '';
+let warnedPlacesDenied = false;
 
 router.get('/ping', (req, res) => {
   res.json({
@@ -41,7 +42,6 @@ router.get('/search', async (req, res) => {
 
     const base = 'https://maps.googleapis.com/maps/api/place/nearbysearch/json';
 
-    // Uma função defensiva para cada pedido ao Google
     const fetchByKeyword = async (kw) => {
       try {
         const { data } = await axios.get(base, {
@@ -56,20 +56,44 @@ router.get('/search', async (req, res) => {
           timeout: 10000,
         });
 
-        if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-          console.warn('Google Places status:', data.status, 'message:', data.error_message);
-        }
-
-        return Array.isArray(data.results) ? data.results : [];
+        return {
+          keyword: kw,
+          status: data.status,
+          errorMessage: data.error_message || '',
+          results: Array.isArray(data.results) ? data.results : [],
+        };
       } catch (err) {
-        console.error('Google Places request failed for', kw, '-', err.message);
-        return [];
+        return {
+          keyword: kw,
+          status: 'REQUEST_FAILED',
+          errorMessage: err.message,
+          results: [],
+        };
       }
     };
 
-    // Executa todos em paralelo
-    const arrays = await Promise.all(keywords.map(fetchByKeyword));
-    const merged = arrays.flat();
+    const responses = await Promise.all(keywords.map(fetchByKeyword));
+    const denied = responses.find((item) => item.status === 'REQUEST_DENIED');
+    if (denied) {
+      if (!warnedPlacesDenied) {
+        warnedPlacesDenied = true;
+        console.warn(
+          `Google Places unavailable: API key is not authorized for Nearby Search (${denied.errorMessage || 'REQUEST_DENIED'}).`
+        );
+      }
+      return res.json([]);
+    }
+
+    const unexpected = responses.find(
+      (item) => item.status !== 'OK' && item.status !== 'ZERO_RESULTS'
+    );
+    if (unexpected) {
+      console.warn(
+        `Google Places warning: ${unexpected.status} for "${unexpected.keyword}" (${unexpected.errorMessage || 'no details'}).`
+      );
+    }
+
+    const merged = responses.flatMap((item) => item.results);
 
     // de-dup por place_id
     const map = new Map();

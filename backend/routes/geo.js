@@ -28,6 +28,9 @@ router.get('/suggest', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
     if (!q) return res.json([]);
+    if (!GOOGLE_PLACES_KEY) {
+      return res.status(500).json({ msg: 'GOOGLE_PLACES_KEY em falta no servidor' });
+    }
 
     const { data } = await axios.get(
       'https://maps.googleapis.com/maps/api/place/autocomplete/json',
@@ -66,6 +69,9 @@ router.get('/place', async (req, res) => {
   try {
     const placeId = String(req.query.placeId || '').trim();
     if (!placeId) return res.status(400).json({ msg: 'placeId em falta' });
+    if (!GOOGLE_PLACES_KEY) {
+      return res.status(500).json({ msg: 'GOOGLE_PLACES_KEY em falta no servidor' });
+    }
 
     const { data } = await axios.get(
       'https://maps.googleapis.com/maps/api/place/details/json',

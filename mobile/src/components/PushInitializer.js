@@ -1,18 +1,17 @@
 // mobile/src/components/PushInitializer.js
 import { useEffect } from "react";
-import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../services/api";
 
-// garante que as notificações aparecem em foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
-});
+const getProjectId = () =>
+  Constants.expoConfig?.extra?.eas?.projectId ||
+  Constants.easConfig?.projectId ||
+  null;
+
+const isExpoGo = () =>
+  Constants.appOwnership === "expo" ||
+  Constants.executionEnvironment === "storeClient";
 
 export default function PushInitializer() {
   const { user } = useAuth();
@@ -22,21 +21,35 @@ export default function PushInitializer() {
 
     (async () => {
       try {
+        const projectId = getProjectId();
+        if (isExpoGo() || !projectId) {
+          console.log("Push notifications skipped in Expo Go or without EAS projectId.");
+          return;
+        }
+
+        const Notifications = require("expo-notifications");
+
+        Notifications.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+          }),
+        });
+
         const { status } = await Notifications.requestPermissionsAsync();
         if (status !== "granted") {
-          console.log("🔔 Permissão de notificações negada");
+          console.log("Permissao de notificacoes negada");
           return;
         }
 
         const token = (
-          await Notifications.getExpoPushTokenAsync({
-            projectId: Constants.expoConfig?.extra?.eas?.projectId,
-          })
+          await Notifications.getExpoPushTokenAsync({ projectId })
         ).data;
-        console.log("🔔 Expo push token:", token);
 
         // backend aceita pushToken ou expoPushToken
         await api.patch("/auth/me", { pushToken: token });
+        console.log("Expo push token registered.");
       } catch (e) {
         console.warn("Falha a inicializar push:", e.message);
       }

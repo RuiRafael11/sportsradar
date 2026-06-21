@@ -1,0 +1,4 @@
+interface:
+  display_name: "test-runner"
+  short_description: "Project rescue workflow for test-runner"
+  default_prompt: "Use the test-runner skill for SportsRadar rescue work."

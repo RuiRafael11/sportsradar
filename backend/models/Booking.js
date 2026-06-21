@@ -33,5 +33,14 @@ const bookingSchema = new Schema(
   { timestamps: true }
 );
 
+bookingSchema.index(
+  { venueId: 1, date: 1, time: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: 'confirmed' },
+    name: 'unique_confirmed_booking_slot',
+  }
+);
+
 // Evita recompilação em hot reload
 module.exports = mongoose.models.Booking || mongoose.model('Booking', bookingSchema);
