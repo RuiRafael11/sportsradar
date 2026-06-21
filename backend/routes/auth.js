@@ -6,9 +6,9 @@ const jwt     = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const User    = require('../models/User');
 const requireAuth = require('../middleware/auth');
+const { getJwtSecret } = require('../config/env');
 
 const router = express.Router();
-const JWT_SECRET  = process.env.JWT_SECRET  || 'segredo123';
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '1d';
 
 // ─────────────────────────────────────────────────────────────
@@ -24,6 +24,15 @@ const authLimiter = rateLimit({
 
 const normalizeEmail = (e='') => String(e).toLowerCase().trim();
 const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
+const publicUser = (user) => ({
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+  expoPushToken: user.expoPushToken || null,
+  preferences: user.preferences || { radiusMeters: 5000, sports: [] },
+  termsAcceptedAt: user.termsAcceptedAt || null,
+  privacyAcceptedAt: user.privacyAcceptedAt || null,
+});
 
 // POST /api/auth/register
 router.post('/register', authLimiter, async (req, res) => {
@@ -31,6 +40,8 @@ router.post('/register', authLimiter, async (req, res) => {
     let { name, email, password, acceptedTerms, acceptedPrivacy } = req.body || {};
     if (!name || !email || !password)
       return res.status(400).json({ msg: 'Campos obrigatórios em falta' });
+    if (!String(email).includes('@'))
+      return res.status(400).json({ msg: 'Email inválido' });
 
     // ⚠️ aceitação obrigatória
     if (!acceptedTerms || !acceptedPrivacy) {
@@ -56,18 +67,10 @@ router.post('/register', authLimiter, async (req, res) => {
       privacyAcceptedAt: now,
     });
 
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+    const token = jwt.sign({ id: user._id }, getJwtSecret(), { expiresIn: JWT_EXPIRES });
     return res.status(201).json({
       token,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        expoPushToken: user.expoPushToken || null,
-        preferences: user.preferences || { radiusMeters: 5000, sports: [] },
-        termsAcceptedAt: user.termsAcceptedAt,
-        privacyAcceptedAt: user.privacyAcceptedAt,
-      }
+      user: publicUser(user),
     });
   } catch (e) {
     console.error(e);
@@ -90,18 +93,10 @@ router.post('/login', authLimiter, async (req, res) => {
     const ok = await bcrypt.compare(String(password), user.password);
     if (!ok) return res.status(400).json({ msg: 'Credenciais inválidas' });
 
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+    const token = jwt.sign({ id: user._id }, getJwtSecret(), { expiresIn: JWT_EXPIRES });
     return res.json({
       token,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        expoPushToken: user.expoPushToken || null,
-        preferences: user.preferences || { radiusMeters: 5000, sports: [] },
-        termsAcceptedAt: user.termsAcceptedAt || null,
-        privacyAcceptedAt: user.privacyAcceptedAt || null,
-      }
+      user: publicUser(user),
     });
   } catch (e) {
     console.error(e);
