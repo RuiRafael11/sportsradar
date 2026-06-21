@@ -1,0 +1,4 @@
+interface:
+  display_name: "portfolio-readme"
+  short_description: "Project rescue workflow for portfolio-readme"
+  default_prompt: "Use the portfolio-readme skill for SportsRadar rescue work."

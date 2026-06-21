@@ -1,0 +1,4 @@
+interface:
+  display_name: "repo-audit"
+  short_description: "Project rescue workflow for repo-audit"
+  default_prompt: "Use the repo-audit skill for SportsRadar rescue work."

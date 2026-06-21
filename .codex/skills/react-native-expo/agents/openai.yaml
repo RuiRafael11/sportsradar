@@ -1,0 +1,4 @@
+interface:
+  display_name: "react-native-expo"
+  short_description: "Project rescue workflow for react-native-expo"
+  default_prompt: "Use the react-native-expo skill for SportsRadar rescue work."
