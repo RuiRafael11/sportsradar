@@ -62,10 +62,10 @@ npm run dev
 ```
 
 Fill `backend/.env` with local/test values before running the server.
-For the current LAN setup, the backend should be reachable from desktop and phone at:
+For physical-phone testing, replace `<YOUR_LAN_IP>` with your computer's LAN IP. The backend should be reachable from desktop and phone at:
 
 ```text
-http://192.168.1.74:5000/api/health
+http://<YOUR_LAN_IP>:5000/api/health
 ```
 
 Expected health response:
@@ -101,7 +101,7 @@ Important variables:
 
 Use the API URL that matches where Expo is running:
 
-- Physical phone on the same Wi-Fi: `EXPO_PUBLIC_API_BASE_URL=http://192.168.1.74:5000/api`
+- Physical phone on the same Wi-Fi: `EXPO_PUBLIC_API_BASE_URL=http://<YOUR_LAN_IP>:5000/api`
 - Android emulator: `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:5000/api`
 - iOS simulator or web: `EXPO_PUBLIC_API_BASE_URL=http://localhost:5000/api`
 
@@ -112,8 +112,8 @@ The committed `android/` folder means the app is Expo prebuild/native-hybrid. Us
 After starting the backend, verify:
 
 ```bash
-curl http://192.168.1.74:5000/api/health
-curl http://192.168.1.74:5000/api/places/ping
+curl http://<YOUR_LAN_IP>:5000/api/health
+curl http://<YOUR_LAN_IP>:5000/api/places/ping
 ```
 
 `/api/places/ping` should return `hasKey: true` only when `GOOGLE_PLACES_KEY` is configured and authorized for the required Google Places APIs. If it is false, search/map screens should show an empty or configuration message instead of crashing.

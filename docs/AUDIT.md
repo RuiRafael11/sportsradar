@@ -60,7 +60,7 @@ SportsRadar is a React Native/Expo mobile app backed by an Express/MongoDB API. 
 - Backend requires `MONGODB_URI` and `JWT_SECRET`.
 - Stripe requires backend `STRIPE_SECRET_KEY` and mobile `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
 - Google discovery requires `GOOGLE_PLACES_KEY` authorized for the required Places APIs.
-- Physical-device Expo testing should set `EXPO_PUBLIC_API_BASE_URL` to the computer LAN URL, for example `http://192.168.1.74:5000/api`.
+- Physical-device Expo testing should set `EXPO_PUBLIC_API_BASE_URL` to the computer LAN URL, for example `http://<YOUR_LAN_IP>:5000/api`.
 
 ## Prioritized Follow-Ups
 
