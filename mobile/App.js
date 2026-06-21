@@ -4,8 +4,8 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import Constants from "expo-constants";
 import { StripeProvider } from "@stripe/stripe-react-native";
+import { STRIPE_PUBLISHABLE_KEY } from "./src/config/env";
 
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
 
@@ -28,12 +28,9 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 const FindStack = createNativeStackNavigator();
 
-const PUBLISHABLE_KEY =
-  Constants?.expoConfig?.extra?.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
-  process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
-  "";
+const PUBLISHABLE_KEY = STRIPE_PUBLISHABLE_KEY;
 
-console.log("Stripe publishable key presente?", !!PUBLISHABLE_KEY);
+console.log("Stripe publishable key configured?", !!PUBLISHABLE_KEY);
 
 // Stack da aba Find (apenas e só as rotas de Find)
 function FindNavigator() {
