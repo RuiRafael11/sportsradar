@@ -64,14 +64,6 @@ export default function HistoryScreen() {
       return;
     }
 
-    if (booking?.paymentIntentId) {
-      const url = `https://dashboard.stripe.com/test/payments/${booking.paymentIntentId}`;
-      Linking.openURL(url).catch(() =>
-        Alert.alert("Recibo", "Nao foi possivel abrir o recibo.")
-      );
-      return;
-    }
-
     Alert.alert("Sem recibo", "Esta reserva nao tem recibo disponivel.");
   };
 
@@ -176,7 +168,7 @@ function BookingCard({ item, onReceipt, onCancel }) {
   const title = item.venueName || item.venue?.name || "Recinto";
   const metaType = (item.venueType || item.venue?.type || "").toString().trim().toLowerCase();
   const metaDistrict = (item.venueDistrict || item.venue?.district || "").toString().trim();
-  const hasReceipt = item.receiptUrl || item.paymentIntentId;
+  const hasReceipt = Boolean(item.receiptUrl);
 
   return (
     <Card style={styles.booking}>
