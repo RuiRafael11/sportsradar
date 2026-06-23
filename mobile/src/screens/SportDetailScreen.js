@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from "react-native";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { api } from "../services/api";
+import { api, getApiErrorMessage } from "../services/api";
+import Button from "../components/Button";
+import Card from "../components/Card";
+import EmptyState from "../components/EmptyState";
+import StatusPill from "../components/StatusPill";
 import { getVenueImage, ImageFallback } from "../utils/images";
-
-const COLORS = { bg: "#F4F6F8", card: "#FFFFFF", text: "#111827", sub: "#6B7280", brand: "#8B0000", border:"#E5E7EB" };
+import { colors, radius, spacing, typography } from "../theme";
 
 export default function SportDetailScreen() {
   const route = useRoute();
@@ -20,8 +23,8 @@ export default function SportDetailScreen() {
     null;
 
   const [loading, setLoading] = useState(true);
-  const [venue, setVenue]   = useState(passedVenue);
-  const [error, setError]   = useState("");
+  const [venue, setVenue] = useState(passedVenue);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -30,7 +33,6 @@ export default function SportDetailScreen() {
       try {
         if (!venueId) throw new Error("ID do recinto em falta.");
 
-        // 1) Se for interno -> busca ao /venues/:id
         if (!String(venueId).startsWith("g:")) {
           const r = await api.get(`/venues/${venueId}`);
           if (!mounted) return;
@@ -39,11 +41,10 @@ export default function SportDetailScreen() {
           return;
         }
 
-        // 2) Se for Google -> usamos o `passedVenue` e adicionamos extras
         const base = passedVenue || { _id: venueId };
-        // tenta extras
-        const extra = await api.get(`/venue-extras/${encodeURIComponent(venueId)}`)
-          .then(r => r.data)
+        const extra = await api
+          .get(`/venue-extras/${encodeURIComponent(venueId)}`)
+          .then((r) => r.data)
           .catch(() => null);
 
         const merged = extra?.details ? { ...base, details: extra.details } : base;
@@ -52,121 +53,268 @@ export default function SportDetailScreen() {
         setLoading(false);
       } catch (e) {
         if (!mounted) return;
-        setError(e?.response?.data?.msg || e.message || "Recinto não encontrado.");
+        setError(getApiErrorMessage(e, e.message || "Recinto nao encontrado."));
         setLoading(false);
       }
     };
 
     load();
-    return () => { mounted = false; };
-  }, [venueId]);
+    return () => {
+      mounted = false;
+    };
+  }, [venueId, passedVenue]);
 
   if (loading) {
-    return <View style={[styles.container,{justifyContent:"center",alignItems:"center"}]}><ActivityIndicator/></View>;
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={styles.loadingText}>A carregar detalhes do recinto...</Text>
+      </View>
+    );
   }
 
   if (!venue || error) {
     return (
-      <View style={[styles.container, { padding: 16 }]}>
-        <Text style={{ color: COLORS.text, fontWeight: "700", marginBottom: 8 }}>
-          {error || "Recinto não encontrado."}
-        </Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.cta}>
-          <Text style={{ color: "#fff", fontWeight: "700" }}>Voltar</Text>
-        </TouchableOpacity>
+      <View style={styles.centered}>
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Recinto indisponivel"
+          message={error || "Nao foi possivel encontrar este recinto."}
+          actionLabel="Voltar"
+          onAction={() => navigation.goBack()}
+        />
       </View>
     );
   }
 
   const d = venue.details || {};
   const amenities = [
-    { key: "hasLockerRoom",   label: "Balneários", icon: "shirt-outline",       val: d.hasLockerRoom },
-    { key: "hasShowers",      label: "Duches",     icon: "water-outline",       val: d.hasShowers },
-    { key: "hasLighting",     label: "Iluminação", icon: "bulb-outline",        val: d.hasLighting },
-    { key: "covered",         label: "Coberto",    icon: "umbrella-outline",    val: d.covered },
-    { key: "indoor",          label: "Interior",   icon: "home-outline",        val: d.indoor },
-    { key: "parking",         label: "Estacion.",  icon: "car-outline",         val: d.parking },
-    { key: "equipmentRental", label: "Aluguer",    icon: "pricetag-outline",    val: d.equipmentRental },
+    { key: "hasLockerRoom", label: "Balnearios", icon: "shirt-outline", value: d.hasLockerRoom },
+    { key: "hasShowers", label: "Duches", icon: "water-outline", value: d.hasShowers },
+    { key: "hasLighting", label: "Iluminacao", icon: "bulb-outline", value: d.hasLighting },
+    { key: "covered", label: "Coberto", icon: "umbrella-outline", value: d.covered },
+    { key: "indoor", label: "Interior", icon: "home-outline", value: d.indoor },
+    { key: "parking", label: "Estacionamento", icon: "car-outline", value: d.parking },
+    { key: "equipmentRental", label: "Aluguer", icon: "pricetag-outline", value: d.equipmentRental },
   ];
 
   return (
-    <View style={styles.container}>
-      <ImageFallback uri={getVenueImage(venue)} style={{ width: "100%", height: 220 }} />
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <ImageFallback uri={getVenueImage(venue)} style={styles.heroImage} />
 
-      <View style={{ padding: 16 }}>
-        <Text style={styles.title}>{venue.name}</Text>
-        <Text style={styles.meta}>
-          {String(venue.type || "").toLowerCase()} • {venue.district}
-        </Text>
-
-        <View style={styles.row}>
-          <Ionicons name="location" size={18} color={COLORS.sub} />
-          <Text style={styles.rowText}>{venue.address || "—"}</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>{venue.name || "Recinto"}</Text>
+        <View style={styles.pills}>
+          {venue.type ? <StatusPill tone="primary">{String(venue.type).toLowerCase()}</StatusPill> : null}
+          {venue.district ? <StatusPill>{venue.district}</StatusPill> : null}
         </View>
+      </View>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Detalhes</Text>
+      <Card style={styles.card}>
+        <InfoRow
+          icon="location-outline"
+          title="Localizacao"
+          value={venue.address || venue.district || "Localizacao nao indicada"}
+        />
+        <InfoRow
+          icon="time-outline"
+          title="Horario"
+          value={d.openingHours || "Horario nao indicado"}
+        />
+        <InfoRow
+          icon="cash-outline"
+          title="Preco por hora"
+          value={d.pricePerHour != null ? `${Number(d.pricePerHour).toFixed(2)} EUR` : "Preco a confirmar"}
+        />
+      </Card>
 
-          <View style={styles.grid}>
-            {amenities.map((a) => (
-              <View key={a.key} style={styles.gridItem}>
-                <View style={[styles.bullet, a.val ? styles.bulletOn : styles.bulletOff]}>
-                  <Ionicons name={a.icon} size={18} color={a.val ? "#fff" : COLORS.sub} />
-                </View>
-                <Text style={[styles.gridText, a.val ? styles.onTxt : styles.offTxt]}>
-                  {a.label}{a.val ? "" : " —"}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          <View style={{ marginTop: 10 }}>
-            <Text style={styles.kv}>Piso: <Text style={styles.kvVal}>{d.surface || "—"}</Text></Text>
-            <Text style={styles.kv}>
-              Dimensões: <Text style={styles.kvVal}>
-                {d.lengthMeters ? `${d.lengthMeters}m` : "—"} × {d.widthMeters ? `${d.widthMeters}m` : "—"}
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Comodidades</Text>
+        <View style={styles.amenities}>
+          {amenities.map((a) => (
+            <View key={a.key} style={[styles.amenity, a.value && styles.amenityActive]}>
+              <Ionicons
+                name={a.icon}
+                size={17}
+                color={a.value ? colors.primary : colors.textMuted}
+              />
+              <Text style={[styles.amenityText, a.value && styles.amenityTextActive]}>
+                {a.label}
               </Text>
-            </Text>
-            <Text style={styles.kv}>Preço/hora: <Text style={styles.kvVal}>{d.pricePerHour != null ? `${Number(d.pricePerHour).toFixed(2)} €` : "—"}</Text></Text>
-            <Text style={styles.kv}>Horário: <Text style={styles.kvVal}>{d.openingHours || "—"}</Text></Text>
-            <Text style={styles.kv}>
-              Contacto: <Text style={styles.kvVal}>{d?.contact?.phone || d?.contact?.email || d?.contact?.website || "—"}</Text>
-            </Text>
-          </View>
+            </View>
+          ))}
         </View>
+      </Card>
 
-        <TouchableOpacity
-          style={[styles.cta, { marginTop: 16 }]}
-          onPress={() => navigation.navigate("ScheduleEvent", {
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Detalhes tecnicos</Text>
+        <DetailLine label="Piso" value={d.surface || "Nao indicado"} />
+        <DetailLine
+          label="Dimensoes"
+          value={`${d.lengthMeters ? `${d.lengthMeters}m` : "-"} x ${
+            d.widthMeters ? `${d.widthMeters}m` : "-"
+          }`}
+        />
+        <DetailLine
+          label="Contacto"
+          value={d?.contact?.phone || d?.contact?.email || d?.contact?.website || "Nao indicado"}
+        />
+      </Card>
+
+      <Button
+        title="Agendar reserva"
+        icon="calendar-outline"
+        onPress={() =>
+          navigation.navigate("ScheduleEvent", {
             venueId,
             venueName: venue.name,
             venue,
-          })}
-        >
-          <Text style={{ color: "#fff", fontWeight: "700" }}>Agendar</Text>
-        </TouchableOpacity>
+          })
+        }
+        style={styles.cta}
+      />
+    </ScrollView>
+  );
+}
+
+function InfoRow({ icon, title, value }) {
+  return (
+    <View style={styles.infoRow}>
+      <View style={styles.infoIcon}>
+        <Ionicons name={icon} size={18} color={colors.primary} />
+      </View>
+      <View style={styles.infoText}>
+        <Text style={styles.infoTitle}>{title}</Text>
+        <Text style={styles.infoValue}>{value}</Text>
       </View>
     </View>
   );
 }
 
+function DetailLine({ label, value }) {
+  return (
+    <View style={styles.detailLine}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container:{ flex:1, backgroundColor: COLORS.bg },
-  title:{ fontSize:24, fontWeight:"800", color:COLORS.text },
-  meta:{ color:COLORS.sub, marginTop:4 },
-  row:{ flexDirection:"row", alignItems:"center", marginTop:10 },
-  rowText:{ marginLeft:6, color:COLORS.text },
-  card:{ marginTop:14, backgroundColor:COLORS.card, borderRadius:12, padding:12, borderWidth:1, borderColor:COLORS.border },
-  sectionTitle:{ fontWeight:"800", color:COLORS.text, fontSize:16, marginBottom:8 },
-  grid:{ flexDirection:"row", flexWrap:"wrap", gap:10 },
-  gridItem:{ width:"30%", minWidth:110, flexDirection:"row", alignItems:"center" },
-  bullet:{ width:28, height:28, borderRadius:14, alignItems:"center", justifyContent:"center", borderWidth:1, borderColor:COLORS.border, marginRight:8 },
-  bulletOn:{ backgroundColor:COLORS.brand, borderColor:COLORS.brand },
-  bulletOff:{ backgroundColor:"#fff" },
-  gridText:{ fontSize:13 },
-  onTxt:{ color:COLORS.text, fontWeight:"700" },
-  offTxt:{ color:COLORS.sub },
-  kv:{ color:COLORS.sub, marginTop:4 },
-  kvVal:{ color:COLORS.text, fontWeight:"700" },
-  cta:{ backgroundColor:COLORS.brand, paddingHorizontal:18, paddingVertical:12, borderRadius:12, alignSelf:"flex-start" },
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    paddingBottom: spacing.xxl,
+  },
+  centered: {
+    flex: 1,
+    backgroundColor: colors.background,
+    justifyContent: "center",
+    padding: spacing.lg,
+  },
+  loadingText: {
+    ...typography.subtitle,
+    marginTop: spacing.md,
+    textAlign: "center",
+  },
+  heroImage: {
+    width: "100%",
+    height: 220,
+    backgroundColor: colors.primarySoft,
+  },
+  header: {
+    padding: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  title: {
+    ...typography.screenTitle,
+  },
+  pills: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  card: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+  },
+  sectionTitle: {
+    ...typography.sectionTitle,
+    marginBottom: spacing.md,
+  },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: spacing.sm,
+  },
+  infoIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: "#EDC7C7",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.md,
+  },
+  infoText: {
+    flex: 1,
+  },
+  infoTitle: {
+    ...typography.small,
+    color: colors.textMuted,
+    fontWeight: "800",
+  },
+  infoValue: {
+    ...typography.body,
+    marginTop: 2,
+  },
+  amenities: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  amenity: {
+    minHeight: 36,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  amenityActive: {
+    borderColor: "#EDC7C7",
+    backgroundColor: colors.primarySoft,
+  },
+  amenityText: {
+    color: colors.textMuted,
+    fontWeight: "700",
+    marginLeft: spacing.xs,
+  },
+  amenityTextActive: {
+    color: colors.text,
+  },
+  detailLine: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingVertical: spacing.md,
+  },
+  detailLabel: {
+    ...typography.small,
+    fontWeight: "800",
+  },
+  detailValue: {
+    ...typography.body,
+    marginTop: 2,
+  },
+  cta: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+  },
 });

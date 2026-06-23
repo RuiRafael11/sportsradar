@@ -1,14 +1,18 @@
 // mobile/src/screens/ScheduleEventScreen.js
-import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, Alert, ActivityIndicator, StyleSheet } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+import { Ionicons } from "@expo/vector-icons";
 import CalendarComponent from "../components/CalendarComponent";
 import TimePickerComponent from "../components/TimePickerComponent";
 import { api } from "../services/api";
-import { Ionicons } from "@expo/vector-icons";
-
-const COLORS = { bg: "#f6f6f6", card:"#fff", text:"#111827", sub:"#6B7280", border:"#E5E7EB", brand:"#8B0000" };
+import Button from "../components/Button";
+import Card from "../components/Card";
+import EmptyState from "../components/EmptyState";
+import ErrorBanner from "../components/ErrorBanner";
+import StatusPill from "../components/StatusPill";
+import { colors, radius, spacing, typography } from "../theme";
 
 export default function ScheduleEventScreen({ navigation, route }) {
   const passedVenue = route?.params?.venue || null;
@@ -19,6 +23,7 @@ export default function ScheduleEventScreen({ navigation, route }) {
 
   const [loadingVenues, setLoadingVenues] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [formError, setFormError] = useState("");
 
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
@@ -37,12 +42,14 @@ export default function ScheduleEventScreen({ navigation, route }) {
         const list = Array.isArray(data) ? data : [];
         setVenues(list);
 
-        if (!venueId && list.length > 0) {
+        setVenueId((currentVenueId) => {
+          if (currentVenueId || list.length === 0) return currentVenueId;
+
           const first = list[0];
-          setVenueId(first._id);
           setVenueName(first.name || "");
           setVenueDetails(first);
-        }
+          return first._id;
+        });
       } catch (e) {
         if (mounted) {
           Alert.alert("Recintos", e?.userMessage || "Nao foi possivel carregar os recintos.");
@@ -53,7 +60,9 @@ export default function ScheduleEventScreen({ navigation, route }) {
     };
 
     loadVenues();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [route?.params?.venueId, passedVenue]);
 
   useEffect(() => {
@@ -78,8 +87,9 @@ export default function ScheduleEventScreen({ navigation, route }) {
       const base = passedVenue || { _id: venueId, name: route?.params?.venueName || "" };
       setVenueDetails(base);
 
-      const extra = await api.get(`/venue-extras/${encodeURIComponent(venueId)}`)
-        .then(r => r.data)
+      const extra = await api
+        .get(`/venue-extras/${encodeURIComponent(venueId)}`)
+        .then((r) => r.data)
         .catch(() => null);
 
       if (mounted && extra?.details) {
@@ -88,12 +98,26 @@ export default function ScheduleEventScreen({ navigation, route }) {
     };
 
     loadDetails();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [venueId, passedVenue, route?.params?.venueName]);
 
+  const canContinue = useMemo(
+    () => Boolean(venueId && selectedDay && selectedTime),
+    [venueId, selectedDay, selectedTime]
+  );
+
   const onConfirm = () => {
-    if (!venueId) return Alert.alert("Falta recinto", "Escolhe um recinto.");
-    if (!selectedDay || !selectedTime) return Alert.alert("Atencao", "Seleciona o dia e a hora.");
+    setFormError("");
+    if (!venueId) {
+      setFormError("Escolhe um recinto antes de continuar.");
+      return;
+    }
+    if (!selectedDay || !selectedTime) {
+      setFormError("Seleciona o dia e a hora da reserva.");
+      return;
+    }
 
     navigation.navigate("PaymentCheckout", {
       venueId,
@@ -107,26 +131,30 @@ export default function ScheduleEventScreen({ navigation, route }) {
   };
 
   const d = venueDetails?.details || {};
-  const amenity = (ok, icon, label) => (
-    <View style={s.amenity} key={label}>
-      <View style={[s.dot, ok ? s.dotOn : s.dotOff]}>
-        <Ionicons name={icon} size={16} color={ok ? "#fff" : COLORS.sub} />
-      </View>
-      <Text style={[s.amenityTxt, ok ? { fontWeight:"700", color: COLORS.text } : { color: COLORS.sub }]}>
-        {label}{ok ? "" : " -"}
-      </Text>
-    </View>
-  );
+  const firstStep = !route?.params?.venueId && !passedVenue ? "2" : "1";
 
   return (
-    <KeyboardAwareScrollView style={s.container} contentContainerStyle={s.content} enableOnAndroid keyboardShouldPersistTaps="handled" extraScrollHeight={80}>
-      {!route?.params?.venueId && !passedVenue && (
-        <View style={s.section}>
-          <Text style={s.sectionTitle}>Recinto</Text>
+    <KeyboardAwareScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      enableOnAndroid
+      keyboardShouldPersistTaps="handled"
+      extraScrollHeight={80}
+    >
+      <View style={styles.header}>
+        <Text style={styles.eyebrow}>Reserva</Text>
+        <Text style={styles.title}>Escolhe o dia e a hora</Text>
+        <Text style={styles.subtitle}>Confirma os detalhes antes de avancar para pagamento.</Text>
+      </View>
+
+      <ErrorBanner message={formError} title="Reserva incompleta" style={styles.banner} />
+
+      {!route?.params?.venueId && !passedVenue ? (
+        <StepCard step="1" title="Selecionar recinto" icon="business-outline">
           {loadingVenues ? (
-            <ActivityIndicator style={{ marginTop: 8 }} />
+            <ActivityIndicator color={colors.primary} />
           ) : (
-            <View style={s.pickerWrap}>
+            <View style={styles.pickerWrap}>
               <Picker
                 selectedValue={venueId}
                 onValueChange={(val) => {
@@ -136,115 +164,210 @@ export default function ScheduleEventScreen({ navigation, route }) {
                   setVenueDetails(v || null);
                 }}
               >
-                {!venues.length ? (
-                  <Picker.Item label="Sem recintos disponiveis" value={null} />
-                ) : null}
+                {!venues.length ? <Picker.Item label="Sem recintos disponiveis" value={null} /> : null}
                 {venues.map((v) => (
                   <Picker.Item key={v._id} label={v.name} value={v._id} />
                 ))}
               </Picker>
             </View>
           )}
-        </View>
-      )}
+        </StepCard>
+      ) : null}
 
-      <View style={s.section}>
-        <Text style={s.sectionTitle}>Detalhes do recinto</Text>
-
+      <StepCard step={firstStep} title="Recinto selecionado" icon="location-outline">
         {loadingDetails ? (
-          <ActivityIndicator style={{ marginTop: 8 }} />
+          <ActivityIndicator color={colors.primary} />
         ) : venueDetails ? (
-          <View style={s.card}>
-            <Text style={s.title}>{venueDetails.name}</Text>
-            <Text style={s.meta}>
-              {String(venueDetails.type || "").toLowerCase()} - {venueDetails.district || ""}
+          <>
+            <Text style={styles.venueTitle}>{venueDetails.name || venueName || "Recinto"}</Text>
+            <Text style={styles.venueMeta}>
+              {[String(venueDetails.type || "").toLowerCase(), venueDetails.district].filter(Boolean).join(" - ") ||
+                "Detalhes do recinto"}
             </Text>
-            {venueDetails.address ? <Text style={[s.meta, { marginTop: 2 }]}>{venueDetails.address}</Text> : null}
-
-            <View style={s.amenitiesRow}>
-              {amenity(!!d.hasLockerRoom, "shirt-outline", "Balnearios")}
-              {amenity(!!d.hasShowers, "water-outline", "Duches")}
-              {amenity(!!d.hasLighting, "bulb-outline", "Iluminacao")}
-              {amenity(!!d.covered, "umbrella-outline", "Coberto")}
-              {amenity(!!d.indoor, "home-outline", "Interior")}
-              {amenity(!!d.parking, "car-outline", "Estacion.")}
-              {amenity(!!d.equipmentRental, "pricetag-outline", "Aluguer")}
+            {venueDetails.address ? <Text style={styles.venueAddress}>{venueDetails.address}</Text> : null}
+            <View style={styles.pills}>
+              {d.pricePerHour != null ? (
+                <StatusPill tone="primary">{Number(d.pricePerHour).toFixed(2)} EUR/h</StatusPill>
+              ) : (
+                <StatusPill>Preco a confirmar</StatusPill>
+              )}
+              {d.openingHours ? <StatusPill>{d.openingHours}</StatusPill> : null}
             </View>
-
-            <View style={{ marginTop: 8 }}>
-              <Text style={s.kv}>Piso: <Text style={s.kvVal}>{d.surface || "-"}</Text></Text>
-              <Text style={s.kv}>
-                Dimensoes:{" "}
-                <Text style={s.kvVal}>
-                  {d.lengthMeters ? `${d.lengthMeters}m` : "-"} x {d.widthMeters ? `${d.widthMeters}m` : "-"}
-                </Text>
-              </Text>
-              <Text style={s.kv}>
-                Preco/hora:{" "}
-                <Text style={s.kvVal}>
-                  {d.pricePerHour != null ? `${Number(d.pricePerHour).toFixed(2)} EUR` : "-"}
-                </Text>
-              </Text>
-              <Text style={s.kv}>Horario: <Text style={s.kvVal}>{d.openingHours || "-"}</Text></Text>
-              <Text style={s.kv}>
-                Contacto:{" "}
-                <Text style={s.kvVal}>
-                  {d?.contact?.phone || d?.contact?.email || d?.contact?.website || "-"}
-                </Text>
-              </Text>
-            </View>
-          </View>
+          </>
         ) : (
-          <Text style={{ color: COLORS.sub }}>Sem detalhes disponiveis.</Text>
+          <EmptyState
+            compact
+            icon="alert-circle-outline"
+            title="Sem detalhes disponiveis"
+            message="Podes continuar se o recinto estiver selecionado."
+          />
         )}
-      </View>
+      </StepCard>
 
-      <View style={s.section}>
-        <Text style={s.sectionTitle}>Dia</Text>
-        <CalendarComponent onDaySelect={setSelectedDay} />
-        {selectedDay ? <Text>Selecionado: {selectedDay}</Text> : null}
-      </View>
+      <StepCard step={String(Number(firstStep) + 1)} title="Escolher dia" icon="calendar-outline">
+        <View style={styles.calendarWrap}>
+          <CalendarComponent onDaySelect={setSelectedDay} />
+        </View>
+        {selectedDay ? <Text style={styles.selectedText}>Dia selecionado: {selectedDay}</Text> : null}
+      </StepCard>
 
-      <View style={s.section}>
-        <Text style={s.sectionTitle}>Hora</Text>
+      <StepCard step={String(Number(firstStep) + 2)} title="Escolher hora" icon="time-outline">
         <TimePickerComponent selectedTime={selectedTime} onTimeChange={setSelectedTime} />
-        {selectedTime ? <Text>Selecionado: {selectedTime}</Text> : null}
-      </View>
+        {selectedTime ? <Text style={styles.selectedText}>Hora selecionada: {selectedTime}</Text> : null}
+      </StepCard>
 
-      <View style={{ flex: 1, justifyContent: "flex-end", marginTop: 24 }}>
-        <TouchableOpacity style={s.confirmBtn} onPress={onConfirm}>
-          <Text style={s.confirmText}>Confirmar</Text>
-        </TouchableOpacity>
-      </View>
+      <Card style={styles.summary}>
+        <Text style={styles.sectionTitle}>Resumo</Text>
+        <SummaryLine label="Recinto" value={venueDetails?.name || venueName || "Por escolher"} />
+        <SummaryLine label="Dia" value={selectedDay || "Por escolher"} />
+        <SummaryLine label="Hora" value={selectedTime || "Por escolher"} />
+        <Button
+          title="Continuar para pagamento"
+          icon="card-outline"
+          onPress={onConfirm}
+          disabled={!canContinue}
+          style={styles.confirm}
+        />
+      </Card>
     </KeyboardAwareScrollView>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
-  content: { flexGrow: 1, padding: 16, justifyContent: "flex-start" },
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 18, fontWeight: "600", marginBottom: 8, color: COLORS.text },
+function StepCard({ step, title, icon, children }) {
+  return (
+    <Card style={styles.stepCard}>
+      <View style={styles.stepHeader}>
+        <View style={styles.stepIcon}>
+          <Text style={styles.stepNumber}>{step}</Text>
+        </View>
+        <View style={styles.stepTitleWrap}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+        </View>
+        <Ionicons name={icon} size={20} color={colors.primary} />
+      </View>
+      {children}
+    </Card>
+  );
+}
 
-  pickerWrap: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, backgroundColor: "#fff" },
+function SummaryLine({ label, value }) {
+  return (
+    <View style={styles.summaryLine}>
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={styles.summaryValue}>{value}</Text>
+    </View>
+  );
+}
 
-  card: {
-    backgroundColor: COLORS.card, borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: COLORS.border
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  title: { fontSize: 18, fontWeight: "800", color: COLORS.text },
-  meta: { color: COLORS.sub, marginTop: 2 },
-
-  amenitiesRow: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 10 },
-  amenity: { flexDirection: "row", alignItems: "center" },
-  dot: { width: 24, height: 24, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, alignItems: "center", justifyContent: "center", marginRight: 6 },
-  dotOn: { backgroundColor: COLORS.brand, borderColor: COLORS.brand },
-  dotOff: { backgroundColor: "#fff" },
-  amenityTxt: { fontSize: 13 },
-
-  kv: { color: COLORS.sub, marginTop: 4 },
-  kvVal: { color: COLORS.text, fontWeight: "700" },
-
-  confirmBtn: { backgroundColor: COLORS.brand, paddingVertical: 14, borderRadius: 8, alignItems: "center", marginBottom: 24 },
-  confirmText: { color: "white", fontSize: 16, fontWeight: "600" },
+  content: {
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  header: {
+    marginBottom: spacing.lg,
+  },
+  eyebrow: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    marginBottom: spacing.xs,
+  },
+  title: {
+    ...typography.screenTitle,
+  },
+  subtitle: {
+    ...typography.subtitle,
+    marginTop: spacing.sm,
+  },
+  banner: {
+    marginBottom: spacing.md,
+  },
+  stepCard: {
+    marginBottom: spacing.md,
+  },
+  stepHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
+  stepIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.sm,
+  },
+  stepNumber: {
+    color: "#FFFFFF",
+    fontWeight: "900",
+  },
+  stepTitleWrap: {
+    flex: 1,
+  },
+  sectionTitle: {
+    ...typography.sectionTitle,
+  },
+  pickerWrap: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    overflow: "hidden",
+  },
+  venueTitle: {
+    ...typography.title,
+  },
+  venueMeta: {
+    ...typography.small,
+    marginTop: spacing.xs,
+  },
+  venueAddress: {
+    ...typography.subtitle,
+    marginTop: spacing.xs,
+  },
+  pills: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  calendarWrap: {
+    borderRadius: radius.md,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  selectedText: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: "800",
+    marginTop: spacing.sm,
+  },
+  summary: {
+    marginTop: spacing.sm,
+  },
+  summaryLine: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingVertical: spacing.md,
+  },
+  summaryLabel: {
+    ...typography.small,
+    fontWeight: "800",
+  },
+  summaryValue: {
+    ...typography.body,
+    marginTop: 2,
+  },
+  confirm: {
+    marginTop: spacing.md,
+  },
 });
