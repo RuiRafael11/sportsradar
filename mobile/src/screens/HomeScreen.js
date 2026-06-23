@@ -188,28 +188,19 @@ export default function HomeScreen() {
     }
   }, [fetchPlaces]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
   useFocusEffect(
     useCallback(() => {
       let alive = true;
       (async () => {
         await AsyncStorage.getItem("@prefs_bump");
         if (alive) {
-          try {
-            await fetchPlaces();
-          } catch (e) {
-            setItems([]);
-            setLoadError(getApiErrorMessage(e, "Nao foi possivel carregar recintos."));
-          }
+          await load();
         }
       })();
       return () => {
         alive = false;
       };
-    }, [fetchPlaces])
+    }, [load])
   );
 
   const filtered = useMemo(() => {
