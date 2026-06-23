@@ -173,6 +173,10 @@ router.post('/', requireAuth, async (req, res) => {
 // Cancelar (até 24h antes)
 router.delete('/:id', requireAuth, async (req, res) => {
   try {
+    if (!isMongoId(req.params.id)) {
+      return res.status(400).json({ msg: 'ID de reserva inválido' });
+    }
+
     const b = await Booking.findOne({ _id: req.params.id, user: req.userId }).populate('venue', 'name');
     if (!b) return res.status(404).json({ msg: 'Reserva não encontrada' });
 

@@ -121,4 +121,16 @@ describe('booking routes', () => {
 
     expect(res.status).toBe(404);
   });
+
+  test('rejects malformed booking id on cancel', async () => {
+    const { user } = await createUser();
+    const token = tokenFor(user);
+
+    const res = await request(app())
+      .delete('/api/bookings/not-a-valid-id')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.msg).toMatch(/ID de reserva inválido/);
+  });
 });
