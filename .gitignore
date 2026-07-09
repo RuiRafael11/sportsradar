@@ -1,6 +1,7 @@
 /backend/.env
 /mobile/.env
 !/mobile/.env.example
+.codex/
 /backend/node_modules/
 /mobile/node_modules/
 .expo

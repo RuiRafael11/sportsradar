@@ -34,6 +34,13 @@ export default StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  pickerBox: {
+    borderWidth: 1,
+    borderColor: '#E6DDD9',
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
   slot: {
     paddingVertical: 10,
     paddingHorizontal: 14,

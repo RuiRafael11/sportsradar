@@ -1,37 +1,115 @@
 import React from "react";
-import { View, Text, ScrollView, TouchableOpacity, Linking } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Card from "../components/Card";
+import StatusPill from "../components/StatusPill";
+import { colors, radius, spacing, typography } from "../theme";
 
 export default function AboutScreen() {
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: "#fff", padding: 16 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
-        <Ionicons name="information-circle-outline" size={26} color="#8B0000" />
-        <Text style={{ fontSize: 22, fontWeight: "800", marginLeft: 8 }}>Sobre</Text>
-      </View>
-
-      <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "#eee", marginBottom: 12 }}>
-        <Text style={{ fontWeight: "700", marginBottom: 6 }}>Sobre a aplicação</Text>
-        <Text style={{ color: "#555" }}>
-          A SportRadar facilita o acesso a recintos desportivos, permitindo pesquisar, ver detalhes,
-          agendar horários e pagar de forma simples e segura. Focada em usabilidade, integra métodos
-          de pagamento e histórico de reservas para uma experiência completa.
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <View style={styles.header}>
+        <Text style={styles.eyebrow}>Projeto</Text>
+        <Text style={styles.title}>Sobre SportsRadar</Text>
+        <Text style={styles.subtitle}>
+          App movel para descobrir recintos desportivos, agendar reservas e preparar pagamentos.
         </Text>
       </View>
 
-      <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "#eee", marginBottom: 12 }}>
-        <Text style={{ fontWeight: "700" }}>Versão: 1.0.0</Text>
-      </View>
+      <Card style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.iconWrap}>
+            <Ionicons name="trophy-outline" size={20} color={colors.primary} />
+          </View>
+          <Text style={styles.sectionTitle}>Objetivo</Text>
+        </View>
+        <Text style={styles.body}>
+          SportsRadar junta pesquisa, mapa, detalhes de recinto, agendamento, pagamento e historico num fluxo unico para uma demo universitaria.
+        </Text>
+      </Card>
 
-      <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 14, borderWidth: 1, borderColor: "#eee", marginBottom: 12 }}>
-        <Text style={{ fontWeight: "700", marginBottom: 6 }}>Termos & Políticas</Text>
-        <TouchableOpacity onPress={() => Linking.openURL("https://example.com/privacy")}>
-          <Text style={{ color: "#1e88e5" }}>Política de Privacidade</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => Linking.openURL("https://example.com/terms")} style={{ marginTop: 6 }}>
-          <Text style={{ color: "#1e88e5" }}>Termos de Utilização</Text>
-        </TouchableOpacity>
-      </View>
+      <Card style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.iconWrap}>
+            <Ionicons name="construct-outline" size={20} color={colors.primary} />
+          </View>
+          <Text style={styles.sectionTitle}>Estado da demo</Text>
+        </View>
+        <View style={styles.pills}>
+          <StatusPill tone="success">Versao 1.0.0</StatusPill>
+          <StatusPill tone="primary">Stripe sandbox</StatusPill>
+          <StatusPill>Google Places configuravel</StatusPill>
+        </View>
+      </Card>
+
+      <Card style={styles.card}>
+        <View style={styles.cardHeader}>
+          <View style={styles.iconWrap}>
+            <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+          </View>
+          <Text style={styles.sectionTitle}>Legal e privacidade</Text>
+        </View>
+        <Text style={styles.body}>
+          Os termos e a politica de privacidade aparecem no registo. Este ecra evita links externos ficticios para manter a demo segura e honesta.
+        </Text>
+      </Card>
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  header: {
+    marginBottom: spacing.lg,
+  },
+  eyebrow: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    marginBottom: spacing.xs,
+  },
+  title: {
+    ...typography.screenTitle,
+  },
+  subtitle: {
+    ...typography.subtitle,
+    marginTop: spacing.sm,
+  },
+  card: {
+    marginBottom: spacing.md,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.sm,
+  },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.sm,
+  },
+  sectionTitle: {
+    ...typography.sectionTitle,
+    flex: 1,
+  },
+  body: {
+    ...typography.subtitle,
+  },
+  pills: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+});

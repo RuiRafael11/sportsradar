@@ -1,15 +1,15 @@
 // mobile/App.js
 import React from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { STRIPE_PUBLISHABLE_KEY } from "./src/config/env";
-
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
+import { colors, typography } from "./src/theme";
 
-// Screens
 import PaymentCheckoutScreen from "./src/screens/PaymentCheckoutScreen";
 import LoginScreen from "./src/screens/LoginScreen";
 import RegisterScreen from "./src/screens/RegisterScreen";
@@ -21,7 +21,6 @@ import MapScreen from "./src/screens/MapScreen";
 import SportDetailScreen from "./src/screens/SportDetailScreen";
 import HelpScreen from "./src/screens/HelpScreen";
 import AboutScreen from "./src/screens/AboutScreen";
-
 import PushInitializer from "./src/components/PushInitializer";
 
 const Stack = createNativeStackNavigator();
@@ -30,24 +29,42 @@ const FindStack = createNativeStackNavigator();
 
 const PUBLISHABLE_KEY = STRIPE_PUBLISHABLE_KEY;
 
-console.log("Stripe publishable key configured?", !!PUBLISHABLE_KEY);
-
-// Stack da aba Find (apenas e só as rotas de Find)
 function FindNavigator() {
   return (
-    <FindStack.Navigator screenOptions={{ headerShown: true, title: "" }}>
+    <FindStack.Navigator
+      screenOptions={{
+        headerShown: true,
+        title: "",
+        headerTintColor: colors.primary,
+        headerStyle: { backgroundColor: colors.background },
+        headerShadowVisible: false,
+      }}
+    >
       <FindStack.Screen name="Map" component={MapScreen} options={{ headerShown: false }} />
-      <FindStack.Screen name="SportDetail" component={SportDetailScreen} />
-      <FindStack.Screen name="ScheduleEvent" component={ScheduleEventScreen} />
-      <FindStack.Screen name="PaymentCheckout" component={PaymentCheckoutScreen} />
+      <FindStack.Screen name="SportDetail" component={SportDetailScreen} options={{ title: "Recinto" }} />
+      <FindStack.Screen name="ScheduleEvent" component={ScheduleEventScreen} options={{ title: "Reserva" }} />
+      <FindStack.Screen name="PaymentCheckout" component={PaymentCheckoutScreen} options={{ title: "Pagamento" }} />
     </FindStack.Navigator>
   );
 }
 
-// Tabs principais
 function AppTabs() {
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false }}>
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+          height: 62,
+          paddingTop: 6,
+          paddingBottom: 8,
+        },
+        tabBarLabelStyle: { fontWeight: "800", fontSize: 12 },
+      }}
+    >
       <Tab.Screen
         name="Home"
         component={HomeScreen}
@@ -75,27 +92,32 @@ function AppTabs() {
   );
 }
 
-// Decide auth + rotas globais (Help/About aqui!)
 function RootNavigator() {
   const { user, booting } = useAuth();
-  if (booting) return null;
+
+  if (booting) {
+    return (
+      <View style={styles.boot}>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={styles.bootText}>A iniciar SportsRadar...</Text>
+      </View>
+    );
+  }
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        headerTintColor: colors.primary,
+        headerStyle: { backgroundColor: colors.background },
+        headerShadowVisible: false,
+      }}
+    >
       {user ? (
         <>
           <Stack.Screen name="Main" component={AppTabs} />
-          {/* páginas “globais” fora das tabs */}
-          <Stack.Screen
-            name="Help"
-            component={HelpScreen}
-            options={{ headerShown: true, title: "Ajuda" }}
-          />
-          <Stack.Screen
-            name="About"
-            component={AboutScreen}
-            options={{ headerShown: true, title: "Sobre" }}
-          />
+          <Stack.Screen name="Help" component={HelpScreen} options={{ headerShown: true, title: "Ajuda" }} />
+          <Stack.Screen name="About" component={AboutScreen} options={{ headerShown: true, title: "Sobre" }} />
         </>
       ) : (
         <>
@@ -123,3 +145,16 @@ export default function App() {
     </StripeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  boot: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.background,
+  },
+  bootText: {
+    ...typography.subtitle,
+    marginTop: 12,
+  },
+});

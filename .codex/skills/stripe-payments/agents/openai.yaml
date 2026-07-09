@@ -1,4 +1,0 @@
-interface:
-  display_name: "stripe-payments"
-  short_description: "Project rescue workflow for stripe-payments"
-  default_prompt: "Use the stripe-payments skill for SportsRadar rescue work."

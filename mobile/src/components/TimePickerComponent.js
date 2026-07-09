@@ -23,7 +23,7 @@ export default function TimePickerComponent({ selectedTime, onTimeChange }) {
         selectedValue={selectedTime}
         onValueChange={(itemValue) => onTimeChange(itemValue)}
       >
-        <Picker.Item label="Select a time" value={null} />
+        <Picker.Item label="Escolhe uma hora" value={null} />
         {times.map((time, index) => (
           <Picker.Item key={index} label={time} value={time} />
         ))}

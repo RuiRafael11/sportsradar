@@ -1,4 +1,0 @@
-interface:
-  display_name: "security-hardening"
-  short_description: "Project rescue workflow for security-hardening"
-  default_prompt: "Use the security-hardening skill for SportsRadar rescue work."

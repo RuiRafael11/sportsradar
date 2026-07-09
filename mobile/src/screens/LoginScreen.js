@@ -1,71 +1,143 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from "react";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useAuth } from "../context/AuthContext";
+import Button from "../components/Button";
+import Card from "../components/Card";
+import ErrorBanner from "../components/ErrorBanner";
+import InputField from "../components/InputField";
+import { colors, spacing, typography } from "../theme";
 
 export default function LoginScreen({ navigation }) {
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const onSubmit = async () => {
-    if (!email || !password) {
-      Alert.alert('Campos obrigatórios', 'Preenche email e password.');
+    setError("");
+    if (!email.trim() || !password) {
+      setError("Preenche o email e a password para entrar.");
       return;
     }
+
     try {
       setLoading(true);
       await login(email.trim(), password);
-      // se correr bem, AuthContext mete-te logo nas Tabs/Home
     } catch (e) {
-      const msg = e?.response?.data?.msg || 'Falha no login';
-      Alert.alert('Erro', msg);
+      setError(e?.response?.data?.msg || "Nao foi possivel iniciar sessao.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Entrar</Text>
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.content}
+      >
+        <View style={styles.header}>
+          <Text style={styles.brand}>SportsRadar</Text>
+          <Text style={styles.title}>Encontra o teu proximo recinto</Text>
+          <Text style={styles.subtitle}>
+            Pesquisa, agenda e acompanha reservas desportivas num so lugar.
+          </Text>
+        </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
+        <Card style={styles.card}>
+          <Text style={styles.cardTitle}>Entrar</Text>
+          <Text style={styles.cardSubtitle}>Usa a tua conta para continuar.</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+          <ErrorBanner message={error} style={styles.error} />
 
-      <TouchableOpacity style={styles.button} onPress={onSubmit} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Login</Text>}
-      </TouchableOpacity>
+          <InputField
+            label="Email"
+            icon="mail-outline"
+            placeholder="nome@email.com"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+            textContentType="emailAddress"
+          />
 
-      <Text style={styles.switch}>
-        Não tens conta?{' '}
-        <Text style={styles.link} onPress={() => navigation.navigate('Register')}>
-          Regista-te
-        </Text>
-      </Text>
-    </View>
+          <InputField
+            label="Password"
+            icon="lock-closed-outline"
+            placeholder="A tua password"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+            textContentType="password"
+          />
+
+          <Button title="Entrar" onPress={onSubmit} loading={loading} icon="log-in-outline" />
+          <Button
+            title="Criar conta"
+            onPress={() => navigation.navigate("Register")}
+            variant="quiet"
+            style={styles.secondaryAction}
+          />
+        </Card>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, justifyContent: 'center', backgroundColor: '#f6f6f6' },
-  title: { fontSize: 26, fontWeight: 'bold', marginBottom: 24, textAlign: 'center' },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd', padding: 14, borderRadius: 10, marginBottom: 12 },
-  button: { backgroundColor: '#000', padding: 14, borderRadius: 10, alignItems: 'center', marginTop: 8 },
-  buttonText: { color: '#fff', fontWeight: 'bold' },
-  switch: { marginTop: 16, textAlign: 'center' },
-  link: { color: '#007aff', fontWeight: '600' },
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    flexGrow: 1,
+    padding: spacing.lg,
+    justifyContent: "center",
+  },
+  header: {
+    marginBottom: spacing.xl,
+  },
+  brand: {
+    color: colors.primary,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "900",
+    marginBottom: spacing.sm,
+  },
+  title: {
+    ...typography.screenTitle,
+  },
+  subtitle: {
+    ...typography.subtitle,
+    marginTop: spacing.sm,
+  },
+  card: {
+    padding: spacing.xl,
+  },
+  cardTitle: {
+    ...typography.title,
+  },
+  cardSubtitle: {
+    ...typography.subtitle,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  error: {
+    marginBottom: spacing.md,
+  },
+  secondaryAction: {
+    marginTop: spacing.sm,
+  },
 });

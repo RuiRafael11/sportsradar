@@ -1,40 +1,40 @@
-// mobile/src/screens/HomeScreen.js
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
   Text,
-  FlatList,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
+  View,
 } from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { api, getApiErrorMessage } from "../services/api";
-import { getVenueImage, ImageFallback } from "../utils/images";
+import Button from "../components/Button";
+import Card from "../components/Card";
+import EmptyState from "../components/EmptyState";
+import ErrorBanner from "../components/ErrorBanner";
+import StatusPill from "../components/StatusPill";
+import VenueCard from "../components/VenueCard";
+import { colors, radius, spacing, typography } from "../theme";
 
-const COLORS = {
-  bg: "#F4F6F8",
-  card: "#FFFFFF",
-  text: "#111827",
-  sub: "#6B7280",
-  brand: "#8B0000",
-  border: "#E5E7EB",
-  chipBg: "#FFFFFF",
-  chipBorder: "#E5E7EB",
-  chipActiveBg: "#8B0000",
-  chipActiveText: "#FFFFFF",
-  heart: "#8B0000",
-};
+const ALL_SPORTS = [
+  "padel",
+  "tenis",
+  "futsal",
+  "basquetebol",
+  "futebol",
+  "polidesportivo",
+  "pavilhao",
+  "multiusos",
+  "atletismo",
+];
 
-const ALL_SPORTS = ["padel","tenis","futsal","basquetebol","futebol","polidesportivo","pavilhao","multiusos","atletismo"];
-
-// haversine
 const toRad = (d) => (d * Math.PI) / 180;
+
 function distanceKm(a, b) {
   if (!a || !b) return Infinity;
   const R = 6371;
@@ -50,19 +50,12 @@ function distanceKm(a, b) {
   return R * c;
 }
 
-// mini badges (máx 3 por card para não poluir)
-const AMENITY_BADGES = (d = {}) => {
-  const defs = [
-    d.hasLighting     ? { key: 'light',  icon: 'bulb-outline',      label: 'Luz' } : null,
-    d.hasShowers      ? { key: 'shower', icon: 'water-outline',     label: 'Duches' } : null,
-    d.hasLockerRoom   ? { key: 'locker', icon: 'shirt-outline',     label: 'Balneários' } : null,
-    d.parking         ? { key: 'park',   icon: 'car-outline',       label: 'Parque' } : null,
-    d.covered         ? { key: 'cover',  icon: 'umbrella-outline',  label: 'Coberto' } : null,
-    d.indoor          ? { key: 'indoor', icon: 'home-outline',      label: 'Interior' } : null,
-    d.equipmentRental ? { key: 'equip',  icon: 'pricetag-outline',  label: 'Aluguer' } : null,
-  ].filter(Boolean);
-  return defs.slice(0, 3); // mostra no máx 3
-};
+function labelForSport(value) {
+  if (value === "all") return "Todos";
+  return String(value || "")
+    .replace(/-/g, " ")
+    .replace(/^./, (c) => c.toUpperCase());
+}
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -73,8 +66,6 @@ export default function HomeScreen() {
   const [query, setQuery] = useState("");
   const [chip, setChip] = useState("all");
   const [favorites, setFavorites] = useState([]);
-
-  // prefs
   const [base, setBase] = useState({ lat: null, lng: null });
   const [radius, setRadius] = useState(10000);
   const [prefSports, setPrefSports] = useState([]);
@@ -97,6 +88,7 @@ export default function HomeScreen() {
 
   const toggleFavorite = useCallback(
     (id) => {
+      if (!id) return;
       const next = favorites.includes(id)
         ? favorites.filter((x) => x !== id)
         : [...favorites, id];
@@ -105,61 +97,63 @@ export default function HomeScreen() {
     [favorites, saveFavs]
   );
 
-  const readPrefs = async () => {
-    let lat = 39.5, lng = -8.0, r = 10000, sports = [];
+  const readPrefs = useCallback(async () => {
+    let lat = 39.5;
+    let lng = -8.0;
+    let r = 10000;
+    let sports = [];
     try {
       const raw = await AsyncStorage.getItem("@prefs");
       if (raw) {
         const p = JSON.parse(raw);
         if (typeof p.baseLat === "number" && typeof p.baseLng === "number") {
-          lat = p.baseLat; lng = p.baseLng;
+          lat = p.baseLat;
+          lng = p.baseLng;
         }
         if (typeof p.radiusKm === "number") r = Math.max(1000, p.radiusKm * 1000);
-        if (Array.isArray(p.sports)) sports = p.sports.map(s => String(s).toLowerCase());
+        if (Array.isArray(p.sports)) sports = p.sports.map((s) => String(s).toLowerCase());
       }
     } catch {}
     setBase({ lat, lng });
     setRadius(r);
     setPrefSports(sports);
     return { lat, lng, r, sports };
-  };
+  }, []);
 
-  const fetchPlaces = async () => {
+  const fetchPlaces = useCallback(async () => {
     const { lat, lng, r, sports } = await readPrefs();
-    const keywords = (chip !== "all" ? [chip] : (sports.length ? sports : ALL_SPORTS)).join(",");
+    const keywords = (chip !== "all" ? [chip] : sports.length ? sports : ALL_SPORTS).join(",");
     const { data } = await api.get("/places/search", {
       params: { lat, lng, radius: r, keywords },
     });
     const arr = Array.isArray(data) ? data : [];
     setLoadError("");
 
-    // 1) calcular distância
     const withDist = arr.map((it) => ({
       ...it,
-      _distanceKm: (lat && lng && it.lat && it.lng) ? distanceKm({ lat, lng }, { lat: it.lat, lng: it.lng }) : null,
+      _distanceKm:
+        lat && lng && it.lat && it.lng
+          ? distanceKm({ lat, lng }, { lat: it.lat, lng: it.lng })
+          : null,
     }));
 
-    // 2) buscar extras em bulk (apenas para ids Google g:...)
-    const googleIds = withDist.filter(v => String(v._id).startsWith('g:')).map(v => v._id);
+    const googleIds = withDist.filter((v) => String(v._id).startsWith("g:")).map((v) => v._id);
     let extrasById = {};
     if (googleIds.length) {
       try {
-        const { data: extras } = await api.post('/venue-extras/bulk', { placeIds: googleIds });
-        // mapear por placeId
+        const { data: extras } = await api.post("/venue-extras/bulk", { placeIds: googleIds });
         extrasById = (Array.isArray(extras) ? extras : []).reduce((acc, e) => {
           if (e?.placeId && e?.details) acc[e.placeId] = e.details;
           return acc;
         }, {});
-      } catch { /* sem extras, segue */ }
+      } catch {}
     }
 
-    // 3) fundir detalhes se existirem
-    const merged = withDist.map(v => {
+    const merged = withDist.map((v) => {
       const det = extrasById[v._id] || null;
       return det ? { ...v, details: det } : v;
     });
 
-    // ordenar por distância
     merged.sort((a, b) => {
       const da = a._distanceKm ?? Infinity;
       const db = b._distanceKm ?? Infinity;
@@ -167,9 +161,9 @@ export default function HomeScreen() {
     });
 
     setItems(merged);
-  };
+  }, [chip, readPrefs]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       await fetchPlaces();
@@ -179,7 +173,7 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchPlaces]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -192,9 +186,7 @@ export default function HomeScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [chip]);
-
-  useEffect(() => { load(); }, []);
+  }, [fetchPlaces]);
 
   useFocusEffect(
     useCallback(() => {
@@ -202,33 +194,35 @@ export default function HomeScreen() {
       (async () => {
         await AsyncStorage.getItem("@prefs_bump");
         if (alive) {
-          try {
-            await fetchPlaces();
-          } catch (e) {
-            setItems([]);
-            setLoadError(getApiErrorMessage(e, "Nao foi possivel carregar recintos."));
-          }
+          await load();
         }
       })();
-      return () => { alive = false; };
-    }, [chip])
+      return () => {
+        alive = false;
+      };
+    }, [load])
   );
 
-  // filtragem por texto
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((v) => {
-      const okQuery =
-        !q ||
+      if (!q) return true;
+      return (
         v.name?.toLowerCase().includes(q) ||
         v.district?.toLowerCase().includes(q) ||
-        v.type?.toLowerCase().includes(q);
-      return okQuery;
+        v.type?.toLowerCase().includes(q)
+      );
     });
   }, [items, query]);
 
   const suggestions = filtered.slice(0, 6);
   const favList = filtered.filter((v) => favorites.includes(v._id));
+  const radiusKm = Math.round((radius || 0) / 1000);
+
+  const chips = useMemo(() => {
+    const set = new Set(["all", ...(prefSports.length ? prefSports : ALL_SPORTS)]);
+    return Array.from(set).map((key) => ({ key, label: labelForSport(key) }));
+  }, [prefSports]);
 
   const goDetail = (venue) => {
     const id = venue?._id;
@@ -239,352 +233,326 @@ export default function HomeScreen() {
     });
   };
 
-  // chips
-  const CHIPS = useMemo(() => {
-    const set = new Set(["all", ...(prefSports.length ? prefSports : ALL_SPORTS)]);
-    return Array.from(set).map((k) => ({ key: k, label: k === "all" ? "Todos" : k }));
-  }, [prefSports]);
-
-  const renderChip = ({ item }) => {
-    const active = chip === item.key;
-    return (
-      <TouchableOpacity
-        onPress={() => setChip(item.key)}
-        style={[
-          styles.chip,
-          active && { backgroundColor: COLORS.chipActiveBg, borderColor: COLORS.chipActiveBg },
-        ]}
-      >
-        <Ionicons
-          name={active ? "pricetag" : "pricetag-outline"}
-          size={16}
-          color={active ? COLORS.chipActiveText : COLORS.text}
-          style={{ marginRight: 6 }}
-        />
-        <Text style={[styles.chipText, active && { color: COLORS.chipActiveText }]}>
-          {item.label}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
-
-  // mini badges UI
-  const MiniBadges = ({ details }) => {
-    const badges = AMENITY_BADGES(details);
-    if (!badges.length) return null;
-    return (
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-        {badges.map(b => (
-          <View key={b.key} style={styles.badge}>
-            <Ionicons name={b.icon} size={14} color={COLORS.brand} />
-            <Text style={styles.badgeText}>{b.label}</Text>
-          </View>
-        ))}
-      </View>
-    );
-  };
-
-  const Card = ({ item }) => {
-    const isFav = favorites.includes(item._id);
-    const distanceStr =
-      item._distanceKm != null ? ` • ${item._distanceKm.toFixed(1)} km` : "";
-    return (
-      <TouchableOpacity onPress={() => goDetail(item)} activeOpacity={0.9} style={styles.card}>
-        <ImageFallback uri={getVenueImage(item)} style={styles.cardImage} />
-        <View style={{ padding: 14 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text numberOfLines={1} style={styles.cardTitle}>
-              {item.name}
-            </Text>
-            <TouchableOpacity
-              onPress={() => toggleFavorite(item._id)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name={isFav ? "heart" : "heart-outline"} size={22} color={COLORS.heart} />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.cardMeta}>
-            {(item.type || "").toLowerCase()} • {item.district}
-            {distanceStr}
-          </Text>
-
-          {/* mini badges */}
-          <MiniBadges details={item.details} />
-
-          <TouchableOpacity onPress={() => goDetail(item)} style={styles.cta}>
-            <Text style={styles.ctaText}>Detalhe</Text>
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const ListHeader = (
-    <View>
-      {/* search */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color="#666" />
-          <TextInput
-            placeholder="Procurar por nome, distrito, modalidade…"
-            placeholderTextColor="#9CA3AF"
-            style={styles.searchInput}
-            value={query}
-            onChangeText={setQuery}
-            returnKeyType="search"
-          />
-        </View>
-      </View>
-
-      {/* chips */}
-      <View style={{ paddingLeft: 12, marginBottom: 10 }}>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={CHIPS}
-          keyExtractor={(i) => i.key}
-          renderItem={renderChip}
-          contentContainerStyle={{ paddingRight: 12 }}
-        />
-      </View>
-
-      {/* sugestões */}
-      <Text style={styles.sectionTitle}>Sugestões</Text>
-      {loadError ? (
-        <Text style={{ paddingHorizontal: 16, color: COLORS.sub, marginBottom: 8 }}>
-          {loadError}
-        </Text>
-      ) : suggestions.length === 0 && (
-        <Text style={{ paddingHorizontal: 16, color: COLORS.sub, marginBottom: 8 }}>
-          Sem resultados. Confirma as preferencias ou a configuracao do Google Places.
-        </Text>
-      )}
-    </View>
-  );
-
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
-        <ActivityIndicator />
+      <View style={styles.centered}>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={styles.loadingText}>A procurar recintos perto de ti...</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={suggestions}
-        keyExtractor={(item) => item._id}
-        renderItem={({ item }) => <Card item={item} />}
-        ListHeaderComponent={ListHeader}
-        ListFooterComponent={
-          <View>
-            {/* favoritos */}
-            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Favoritos</Text>
-            {favList.length === 0 ? (
-              <Text style={{ paddingHorizontal: 16, color: COLORS.sub, marginBottom: 8 }}>
-                Ainda não tens favoritos. Toca no ❤ num cartão para guardar.
-              </Text>
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 8 }}
-              >
-                {favList.map((v) => (
-                  <TouchableOpacity key={v._id} onPress={() => goDetail(v)} activeOpacity={0.9} style={styles.favCard}>
-                    <ImageFallback uri={getVenueImage(v)} style={styles.favImg} />
-                    <View style={{ padding: 10 }}>
-                      <Text numberOfLines={1} style={styles.favTitle}>
-                        {v.name}
-                      </Text>
-                      <Text style={styles.favMeta}>
-                        {(v.type || "").toLowerCase()} • {v.district}
-                        {v._distanceKm != null ? ` • ${v._distanceKm.toFixed(1)} km` : ""}
-                      </Text>
-                      {/* mini badges tb nos favoritos */}
-                      <MiniBadges details={v.details} />
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => toggleFavorite(v._id)}
-                      style={styles.favHeart}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Ionicons
-                        name={favorites.includes(v._id) ? "heart" : "heart-outline"}
-                        size={20}
-                        color={COLORS.heart}
-                      />
-                    </TouchableOpacity>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+      }
+    >
+      <View style={styles.header}>
+        <Text style={styles.eyebrow}>Descobrir</Text>
+        <Text style={styles.title}>Recintos para reservar</Text>
+        <Text style={styles.subtitle}>
+          Usa as preferencias do perfil para ajustar localizacao, raio e modalidades.
+        </Text>
+      </View>
 
-            {/* todos */}
-            <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Todos</Text>
-            <View style={{ paddingHorizontal: 16, paddingBottom: 24 }}>
-              {filtered.length === 0 && !loadError ? (
-                <Text style={{ color: COLORS.sub, marginBottom: 8 }}>
-                  Nao ha recintos para apresentar neste momento.
-                </Text>
-              ) : null}
-              {filtered.map((v) => (
-                <TouchableOpacity
-                  key={v._id}
-                  onPress={() => goDetail(v)}
-                  activeOpacity={0.8}
-                  style={styles.row}
-                >
-                  <View style={styles.rowLeft}>
-                    <View style={styles.rowIcon}>
-                      <MaterialCommunityIcons
-                        name="tennis-ball"
-                        size={18}
-                        color="#B91C1C"
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text numberOfLines={1} style={styles.rowTitle}>
-                        {v.name}
-                      </Text>
-                      <Text style={styles.rowMeta}>
-                        {(v.type || "").toLowerCase()} • {v.district}
-                        {v._distanceKm != null ? ` • ${v._distanceKm.toFixed(1)} km` : ""}
-                      </Text>
-                      {/* mini badges em linha */}
-                      <MiniBadges details={v.details} />
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-                </TouchableOpacity>
-              ))}
+      <Card style={styles.searchCard}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search" size={18} color={colors.textMuted} />
+          <TextInput
+            placeholder="Procurar por nome, distrito ou modalidade"
+            placeholderTextColor="#9A9290"
+            style={styles.searchInput}
+            value={query}
+            onChangeText={setQuery}
+            returnKeyType="search"
+          />
+          {query ? (
+            <TouchableOpacity onPress={() => setQuery("")} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <View style={styles.metaRow}>
+          <StatusPill tone="neutral">{radiusKm || 10} km</StatusPill>
+          <StatusPill tone="neutral">
+            {base?.lat && base?.lng ? "Localizacao definida" : "Portugal"}
+          </StatusPill>
+        </View>
+      </Card>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chips}
+      >
+        {chips.map((item) => {
+          const active = chip === item.key;
+          return (
+            <TouchableOpacity
+              key={item.key}
+              activeOpacity={0.85}
+              onPress={() => setChip(item.key)}
+              style={[styles.chip, active && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>{item.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <ErrorBanner message={loadError} title="Pesquisa indisponivel" style={styles.banner} />
+
+      <SectionTitle title="Sugestoes" subtitle={`${suggestions.length} resultado(s) em destaque`} />
+      {suggestions.length === 0 ? (
+        <EmptyState
+          compact
+          icon="search-outline"
+          title="Sem resultados para mostrar"
+          message={
+            loadError
+              ? "Confirma a configuracao da API ou tenta atualizar."
+              : "Experimenta limpar a pesquisa, mudar a modalidade ou ajustar as preferencias."
+          }
+          actionLabel="Atualizar"
+          onAction={onRefresh}
+          style={styles.empty}
+        />
+      ) : (
+        suggestions.map((venue) => (
+          <VenueCard
+            key={venue._id}
+            venue={venue}
+            onPress={() => goDetail(venue)}
+            favorite={favorites.includes(venue._id)}
+            onFavoritePress={() => toggleFavorite(venue._id)}
+          />
+        ))
+      )}
+
+      <SectionTitle title="Favoritos" subtitle="Recintos guardados para acesso rapido" />
+      {favList.length === 0 ? (
+        <EmptyState
+          compact
+          icon="heart-outline"
+          title="Ainda nao tens favoritos"
+          message="Toca no coracao de um recinto para o guardar aqui."
+          style={styles.empty}
+        />
+      ) : (
+        favList.map((venue) => (
+          <VenueCard
+            key={`fav-${venue._id}`}
+            compact
+            venue={venue}
+            onPress={() => goDetail(venue)}
+            favorite
+            onFavoritePress={() => toggleFavorite(venue._id)}
+          />
+        ))
+      )}
+
+      <SectionTitle title="Todos os resultados" subtitle={`${filtered.length} recinto(s) encontrados`} />
+      {filtered.length === 0 && !loadError ? (
+        <EmptyState
+          compact
+          icon="map-outline"
+          title="Nao ha recintos nesta selecao"
+          message="Revê o texto de pesquisa ou as preferencias do perfil."
+          style={styles.empty}
+        />
+      ) : (
+        filtered.map((venue) => (
+          <TouchableOpacity
+            key={`row-${venue._id}`}
+            activeOpacity={0.86}
+            onPress={() => goDetail(venue)}
+            style={styles.row}
+          >
+            <View style={styles.rowIcon}>
+              <Ionicons name="tennisball-outline" size={18} color={colors.primary} />
             </View>
-          </View>
-        }
-        contentContainerStyle={{ paddingBottom: 24 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.brand} />
-        }
+            <View style={styles.rowText}>
+              <Text numberOfLines={1} style={styles.rowTitle}>
+                {venue.name || "Recinto"}
+              </Text>
+              <Text numberOfLines={1} style={styles.rowMeta}>
+                {[String(venue.type || "").toLowerCase(), venue.district].filter(Boolean).join(" - ")}
+                {venue._distanceKm != null ? ` - ${venue._distanceKm.toFixed(1)} km` : ""}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        ))
+      )}
+
+      <Button
+        title="Abrir mapa"
+        icon="map-outline"
+        variant="secondary"
+        onPress={() => navigation.navigate("Find", { screen: "Map" })}
+        style={styles.mapButton}
       />
+    </ScrollView>
+  );
+}
+
+function SectionTitle({ title, subtitle }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
-  sectionTitle: {
-    paddingHorizontal: 16,
-    marginTop: 6,
-    marginBottom: 8,
-    fontSize: 24,
-    fontWeight: "800",
-    color: COLORS.text,
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-
-  // search
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 46,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  content: {
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
   },
-  searchInput: { marginLeft: 8, flex: 1, fontSize: 15, color: COLORS.text },
-
-  // chip
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    height: 38,
-    borderRadius: 20,
-    backgroundColor: COLORS.chipBg,
-    borderWidth: 1,
-    borderColor: COLORS.chipBorder,
-    marginHorizontal: 4,
-  },
-  chipText: { fontSize: 14, color: COLORS.text },
-
-  // card grande
-  card: {
-    backgroundColor: COLORS.card,
-    marginHorizontal: 16,
-    marginBottom: 14,
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cardImage: { width: "100%", height: 190 },
-  cardTitle: { fontSize: 20, fontWeight: "800", color: COLORS.text, flex: 1, marginRight: 8 },
-  cardMeta: { color: COLORS.sub, marginTop: 2, marginBottom: 10 },
-  cta: {
-    alignSelf: "flex-start",
-    backgroundColor: COLORS.brand,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginTop: 10,
-  },
-  ctaText: { color: "white", fontWeight: "700" },
-
-  // badge
-  badge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: "#fff",
-  },
-  badgeText: { fontSize: 12, color: COLORS.text },
-
-  // favs
-  favCard: {
-    width: 280,
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    overflow: "hidden",
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  favImg: { width: "100%", height: 110 },
-  favTitle: { fontWeight: "700", color: COLORS.text },
-  favMeta: { color: COLORS.sub, marginTop: 2 },
-  favHeart: { position: "absolute", right: 10, top: 10, backgroundColor: "#fff", padding: 6, borderRadius: 999 },
-
-  // rows “Todos”
-  row: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  rowLeft: { flexDirection: "row", alignItems: "center", flex: 1, marginRight: 8 },
-  rowIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "#FEE2E2",
+  centered: {
+    flex: 1,
+    backgroundColor: colors.background,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: "#FECACA",
+    padding: spacing.xl,
   },
-  rowTitle: { fontWeight: "700", color: COLORS.text },
-  rowMeta: { color: COLORS.sub, fontSize: 13, marginTop: 2 },
+  loadingText: {
+    ...typography.subtitle,
+    marginTop: spacing.md,
+    textAlign: "center",
+  },
+  header: {
+    marginBottom: spacing.lg,
+  },
+  eyebrow: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    marginBottom: spacing.xs,
+  },
+  title: {
+    ...typography.screenTitle,
+  },
+  subtitle: {
+    ...typography.subtitle,
+    marginTop: spacing.sm,
+  },
+  searchCard: {
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  searchBox: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.surface,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: spacing.sm,
+    color: colors.text,
+    fontSize: 15,
+  },
+  metaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  chips: {
+    paddingRight: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  chip: {
+    minHeight: 38,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    justifyContent: "center",
+    marginRight: spacing.sm,
+  },
+  chipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  chipText: {
+    color: colors.text,
+    fontWeight: "800",
+    fontSize: 13,
+  },
+  chipTextActive: {
+    color: "#FFFFFF",
+  },
+  banner: {
+    marginBottom: spacing.md,
+  },
+  sectionHeader: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  sectionTitle: {
+    ...typography.sectionTitle,
+  },
+  sectionSubtitle: {
+    ...typography.small,
+    marginTop: 2,
+  },
+  empty: {
+    marginBottom: spacing.md,
+  },
+  row: {
+    minHeight: 68,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.sm,
+  },
+  rowIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: "#EDC7C7",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.md,
+  },
+  rowText: {
+    flex: 1,
+    paddingRight: spacing.sm,
+  },
+  rowTitle: {
+    color: colors.text,
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  rowMeta: {
+    ...typography.small,
+    marginTop: 2,
+  },
+  mapButton: {
+    marginTop: spacing.lg,
+  },
 });

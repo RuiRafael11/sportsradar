@@ -9,10 +9,6 @@ const GOOGLE_PLACES_KEY =
   process.env.GOOGLE_API_KEY ||
   '';
 
-if (!GOOGLE_PLACES_KEY) {
-  console.warn('⚠️ GOOGLE_PLACES_KEY ausente — /api/geo/* vai falhar.');
-}
-
 router.get('/ping', (_req, res) => {
   res.json({
     ok: true,

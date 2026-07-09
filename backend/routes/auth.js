@@ -1,5 +1,3 @@
-console.log('🔐 Rotas de auth carregadas');
-
 const express = require('express');
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');

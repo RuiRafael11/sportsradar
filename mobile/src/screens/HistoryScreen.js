@@ -1,30 +1,38 @@
 // src/screens/HistoryScreen.js
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  View,
-  Text,
-  FlatList,
   Alert,
-  RefreshControl,
-  TouchableOpacity,
-  StyleSheet,
   Linking,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { api } from "../services/api";
+import { api, getApiErrorMessage } from "../services/api";
+import Button from "../components/Button";
+import Card from "../components/Card";
+import EmptyState from "../components/EmptyState";
+import ErrorBanner from "../components/ErrorBanner";
+import StatusPill from "../components/StatusPill";
+import { colors, radius, spacing, typography } from "../theme";
 
 export default function HistoryScreen() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const load = async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const { data } = await api.get("/bookings/my");
       setItems(Array.isArray(data) ? data : []);
-    } catch {
-      Alert.alert("Erro", "Não foi possível carregar as reservas.");
+    } catch (e) {
+      setLoadError(getApiErrorMessage(e, "Nao foi possivel carregar as reservas."));
     } finally {
       setLoading(false);
     }
@@ -49,33 +57,23 @@ export default function HistoryScreen() {
   }, [items]);
 
   const openReceipt = (booking) => {
-    // 1) Se o backend guardou o URL do recibo, usa isso
     if (booking?.receiptUrl) {
       Linking.openURL(booking.receiptUrl).catch(() =>
-        Alert.alert("Ops", "Não foi possível abrir o recibo.")
+        Alert.alert("Recibo", "Nao foi possivel abrir o recibo.")
       );
       return;
     }
 
-    // 2) Caso contrário, abre o payment no dashboard Stripe (modo test)
-    if (booking?.paymentIntentId) {
-      const url = `https://dashboard.stripe.com/test/payments/${booking.paymentIntentId}`;
-      Linking.openURL(url).catch(() =>
-        Alert.alert("Ops", "Não foi possível abrir o recibo.")
-      );
-      return;
-    }
-
-    Alert.alert("Sem recibo", "Esta reserva não tem recibo disponível.");
+    Alert.alert("Sem recibo", "Esta reserva nao tem recibo disponivel.");
   };
 
   const confirmCancel = (booking) => {
     const title = booking.venueName || booking.venue?.name || "o recinto";
     Alert.alert(
       "Cancelar reserva",
-      `Queres cancelar ${title} em ${booking.date} às ${booking.time}?`,
+      `Queres cancelar ${title} em ${booking.date} as ${booking.time}?`,
       [
-        { text: "Não", style: "cancel" },
+        { text: "Nao", style: "cancel" },
         { text: "Sim", style: "destructive", onPress: () => cancel(booking) },
       ]
     );
@@ -89,147 +87,241 @@ export default function HistoryScreen() {
           b._id === booking._id ? { ...b, status: "cancelled" } : b
         )
       );
-      Alert.alert("Reserva cancelada", data?.msg || "");
+      Alert.alert("Reserva cancelada", data?.msg || "Reserva atualizada.");
     } catch (e) {
       Alert.alert(
-        "Não foi possível cancelar",
+        "Nao foi possivel cancelar",
         e?.response?.data?.msg || "Tenta novamente."
       );
     }
   };
 
-  const renderItem = ({ item }) => {
-    const cancelled = item.status === "cancelled";
-    const title = item.venueName || item.venue?.name || "Recinto";
-    const metaType =
-      (item.venueType ||
-        item.venue?.type ||
-        "").toString().trim().toLowerCase();
-    const metaDistrict =
-      (item.venueDistrict || item.venue?.district || "").toString().trim();
-
-    return (
-      <View style={s.card}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.title} numberOfLines={1}>
-            {title}
-          </Text>
-
-          <Text style={s.sub}>
-            {item.date} às {item.time}
-          </Text>
-
-          {(metaType || metaDistrict) ? (
-            <Text style={[s.sub, { marginTop: 2 }]}>
-              {metaType}{metaType && metaDistrict ? " • " : ""}{metaDistrict}
-            </Text>
-          ) : null}
-
-          {cancelled ? <Text style={s.cancelled}>Cancelada</Text> : null}
-        </View>
-
-        <View style={s.actions}>
-          {(item.receiptUrl || item.paymentIntentId) ? (
-            <TouchableOpacity
-              style={s.secondaryBtn}
-              onPress={() => openReceipt(item)}
-            >
-              <Ionicons name="receipt-outline" size={18} color="#8B0000" />
-              <Text style={s.secondaryText}>Ver recibo</Text>
-            </TouchableOpacity>
-          ) : null}
-
-          {!cancelled && (
-            <TouchableOpacity
-              style={s.cancelBtn}
-              onPress={() => confirmCancel(item)}
-            >
-              <Ionicons name="trash-outline" size={18} color="#fff" />
-              <Text style={s.cancelBtnText}>Cancelar</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    );
-  };
-
-  const section = (label, data) => (
-    <View style={{ marginTop: 16 }}>
-      <Text style={s.sectionTitle}>{label}</Text>
-      {data.length === 0 ? (
-        <Text style={s.empty}>Sem registos.</Text>
-      ) : (
-        <FlatList
-          data={data}
-          keyExtractor={(it) => it._id}
-          renderItem={renderItem}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-        />
-      )}
-    </View>
-  );
-
   return (
-    <FlatList
-      data={[{ key: "container" }]}
-      renderItem={() => (
-        <View style={s.container}>
-          {section("Próximos", upcoming)}
-          {section("Passados", past)}
-        </View>
-      )}
-      keyExtractor={(it) => it.key}
-      refreshControl={
-        <RefreshControl refreshing={loading} onRefresh={load} tintColor="#8B0000" />
-      }
-      contentContainerStyle={{ paddingVertical: 12 }}
-    />
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.primary} />}
+    >
+      <View style={styles.header}>
+        <Text style={styles.eyebrow}>Reservas</Text>
+        <Text style={styles.title}>Os teus eventos</Text>
+        <Text style={styles.subtitle}>Consulta reservas futuras, recibos e historico de atividade.</Text>
+      </View>
+
+      <ErrorBanner message={loadError} title="Historico indisponivel" style={styles.banner} />
+
+      <Stats upcoming={upcoming.length} past={past.length} />
+
+      <Section
+        title="Proximas"
+        emptyTitle="Ainda nao tens reservas futuras"
+        emptyMessage="Quando confirmares uma reserva, ela aparece aqui."
+        data={upcoming}
+        onReceipt={openReceipt}
+        onCancel={confirmCancel}
+      />
+
+      <Section
+        title="Historico"
+        emptyTitle="Sem reservas anteriores"
+        emptyMessage="As reservas passadas ficam guardadas nesta secao."
+        data={past}
+        onReceipt={openReceipt}
+        onCancel={confirmCancel}
+      />
+    </ScrollView>
   );
 }
 
-const s = StyleSheet.create({
-  container: { paddingHorizontal: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: "700", marginBottom: 8 },
-  empty: { opacity: 0.6, marginVertical: 8 },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-    marginBottom: 8,
+function Stats({ upcoming, past }) {
+  return (
+    <View style={styles.stats}>
+      <Card style={styles.statCard}>
+        <Text style={styles.statValue}>{upcoming}</Text>
+        <Text style={styles.statLabel}>Proximas</Text>
+      </Card>
+      <Card style={styles.statCard}>
+        <Text style={styles.statValue}>{past}</Text>
+        <Text style={styles.statLabel}>Historico</Text>
+      </Card>
+    </View>
+  );
+}
+
+function Section({ title, emptyTitle, emptyMessage, data, onReceipt, onCancel }) {
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {data.length === 0 ? (
+        <EmptyState compact icon="calendar-outline" title={emptyTitle} message={emptyMessage} />
+      ) : (
+        data.map((item) => (
+          <BookingCard key={item._id} item={item} onReceipt={onReceipt} onCancel={onCancel} />
+        ))
+      )}
+    </View>
+  );
+}
+
+function BookingCard({ item, onReceipt, onCancel }) {
+  const cancelled = item.status === "cancelled";
+  const title = item.venueName || item.venue?.name || "Recinto";
+  const metaType = (item.venueType || item.venue?.type || "").toString().trim().toLowerCase();
+  const metaDistrict = (item.venueDistrict || item.venue?.district || "").toString().trim();
+  const hasReceipt = Boolean(item.receiptUrl);
+
+  return (
+    <Card style={styles.booking}>
+      <View style={styles.bookingHeader}>
+        <View style={styles.bookingIcon}>
+          <Ionicons name="calendar-outline" size={19} color={colors.primary} />
+        </View>
+        <View style={styles.bookingText}>
+          <Text style={styles.bookingTitle} numberOfLines={2}>{title}</Text>
+          <Text style={styles.bookingWhen}>{item.date} as {item.time}</Text>
+          {metaType || metaDistrict ? (
+            <Text style={styles.bookingMeta}>
+              {[metaType, metaDistrict].filter(Boolean).join(" - ")}
+            </Text>
+          ) : null}
+        </View>
+        {cancelled ? <StatusPill tone="danger">Cancelada</StatusPill> : <StatusPill tone="success">Confirmada</StatusPill>}
+      </View>
+
+      <View style={styles.actions}>
+        {hasReceipt ? (
+          <Button
+            title="Recibo"
+            icon="receipt-outline"
+            variant="secondary"
+            onPress={() => onReceipt(item)}
+            style={styles.actionButton}
+          />
+        ) : null}
+        {!cancelled ? (
+          <TouchableOpacity activeOpacity={0.84} onPress={() => onCancel(item)} style={styles.cancelButton}>
+            <Ionicons name="trash-outline" size={17} color={colors.danger} />
+            <Text style={styles.cancelText}>Cancelar</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </Card>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  title: { fontSize: 16, fontWeight: "700", marginBottom: 2 },
-  sub: { opacity: 0.7 },
-  cancelled: { marginTop: 6, color: "#A00", fontWeight: "600" },
+  content: {
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  header: {
+    marginBottom: spacing.lg,
+  },
+  eyebrow: {
+    ...typography.small,
+    color: colors.primary,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    marginBottom: spacing.xs,
+  },
+  title: {
+    ...typography.screenTitle,
+  },
+  subtitle: {
+    ...typography.subtitle,
+    marginTop: spacing.sm,
+  },
+  banner: {
+    marginBottom: spacing.md,
+  },
+  stats: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  statCard: {
+    flex: 1,
+    alignItems: "center",
+  },
+  statValue: {
+    color: colors.primary,
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "900",
+  },
+  statLabel: {
+    ...typography.small,
+    fontWeight: "800",
+  },
+  section: {
+    marginTop: spacing.xl,
+  },
+  sectionTitle: {
+    ...typography.sectionTitle,
+    marginBottom: spacing.md,
+  },
+  booking: {
+    marginBottom: spacing.md,
+  },
+  bookingHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  bookingIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.md,
+  },
+  bookingText: {
+    flex: 1,
+    paddingRight: spacing.sm,
+  },
+  bookingTitle: {
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "800",
+  },
+  bookingWhen: {
+    ...typography.body,
+    marginTop: spacing.xs,
+  },
+  bookingMeta: {
+    ...typography.small,
+    marginTop: 2,
+  },
   actions: {
-    marginTop: 12,
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "flex-end",
-    gap: 8,
+    gap: spacing.sm,
+    marginTop: spacing.lg,
   },
-  cancelBtn: {
-    backgroundColor: "#8B0000",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    flexDirection: "row",
-    alignItems: "center",
+  actionButton: {
+    minHeight: 42,
+    paddingVertical: spacing.sm,
   },
-  cancelBtnText: { color: "#fff", marginLeft: 6, fontWeight: "600" },
-  secondaryBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+  cancelButton: {
+    minHeight: 42,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "#8B0000",
-    backgroundColor: "#fff",
+    borderColor: "#F4B9B4",
+    backgroundColor: colors.dangerSoft,
+    paddingHorizontal: spacing.md,
     flexDirection: "row",
     alignItems: "center",
-    marginRight: 8,
+    justifyContent: "center",
   },
-  secondaryText: { color: "#8B0000", marginLeft: 6, fontWeight: "600" },
+  cancelText: {
+    color: colors.danger,
+    fontWeight: "800",
+    marginLeft: spacing.xs,
+  },
 });

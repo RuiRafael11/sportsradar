@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Calendar } from "react-native-calendars";
+import { colors } from "../theme";
 
 export default function CalendarComponent({ onDaySelect }) {
   const [selected, setSelected] = useState(null);
@@ -13,13 +14,17 @@ export default function CalendarComponent({ onDaySelect }) {
       markedDates={{
         [selected]: {
           selected: true,
-          selectedColor: "#8B0000",
+          selectedColor: colors.primary,
           selectedTextColor: "white",
         },
       }}
       theme={{
-        todayTextColor: "#8B0000",
-        arrowColor: "#8B0000",
+        calendarBackground: colors.surface,
+        selectedDayBackgroundColor: colors.primary,
+        todayTextColor: colors.primary,
+        arrowColor: colors.primary,
+        textDayFontWeight: "600",
+        textMonthFontWeight: "800",
       }}
     />
   );
