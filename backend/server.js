@@ -9,10 +9,8 @@ async function start() {
 
   const port = process.env.PORT || 5000;
   const mongoUri = process.env.MONGODB_URI;
-  const masked = mongoUri.replace(/(mongodb\+srv:\/\/[^:]+:)[^@]+/, '$1*****');
 
   mongoose.set('strictQuery', true);
-  console.log('MongoDB URI:', masked);
 
   await mongoose.connect(mongoUri);
   console.log('Connected to MongoDB');

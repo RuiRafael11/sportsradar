@@ -50,7 +50,6 @@ The mobile app uses:
 - `App.js` for root navigation, authenticated tabs, and Stripe provider setup.
 - `src/context/AuthContext.js` for token persistence and auth state.
 - `src/services/api.js` for authenticated backend requests.
-- `src/stripe/api.js` for payment endpoints.
 - `src/config/env.js` for public Expo config values.
 
 Because `mobile/android/` is committed, treat this as an Expo prebuild/native-hybrid project. Avoid regenerating native files unless intentionally updating native configuration.

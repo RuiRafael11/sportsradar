@@ -1,4 +1,4 @@
-name: Backend CI
+name: Project CI
 
 on:
   push:
@@ -33,4 +33,35 @@ jobs:
           NODE_ENV: test
           JWT_SECRET: ci_jwt_secret_with_enough_length
           REQUIRE_PAYMENT_FOR_BOOKINGS: "false"
+        run: npm test
+
+      - name: Smoke import app
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci_jwt_secret_with_enough_length
+        run: node -e "require('./app').createApp(); console.log('backend app import ok')"
+
+  mobile-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup npm
+        run: npm install -g npm@11.6.2
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run mobile config check
         run: npm test

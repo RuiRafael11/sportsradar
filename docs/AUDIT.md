@@ -1,6 +1,6 @@
 # SportsRadar Audit
 
-Date: 2026-06-21
+Date: 2026-07-09
 
 ## App Purpose
 
@@ -40,13 +40,19 @@ SportsRadar is a React Native/Expo mobile app backed by an Express/MongoDB API. 
 - Fixed: API calls now have a timeout and shared user-facing error messages.
 - Fixed: push token registration no longer logs the raw Expo push token.
 - Fixed: repeated Google Places `REQUEST_DENIED` warnings are reduced.
+- Fixed: malformed booking cancellation IDs now return a controlled `400` and are covered by a regression test.
+- Fixed: booking history no longer shows Stripe Dashboard test-payment links as user receipts.
+- Fixed: duplicate initial Home Places fetch was removed.
 - Remaining: profile city autocomplete still silently clears suggestions on Google errors.
-- Remaining: Expo Doctor reports native/prebuild and dependency-maintenance warnings that need separate follow-up.
+- Remaining: Expo Doctor reports the native/prebuild sync warning because `mobile/android/` is committed.
 
 ### Low
 
 - Some older source comments/text contain mojibake from prior encoding issues.
 - The committed `android/` folder means the project is Expo prebuild/native-hybrid; native config changes should be made intentionally.
+- Personal Codex rescue skills were removed from tracked source so the public repository stays project-focused.
+- Unused mobile Stripe helper and misspelled button alias were removed after confirming no imports.
+- Unused backend `twilio` dependency was removed after confirming no code imports it.
 
 ## Frontend/Backend Contract Notes
 
@@ -61,11 +67,12 @@ SportsRadar is a React Native/Expo mobile app backed by an Express/MongoDB API. 
 - Stripe requires backend `STRIPE_SECRET_KEY` and mobile `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
 - Google discovery requires `GOOGLE_PLACES_KEY` authorized for the required Places APIs.
 - Physical-device Expo testing should set `EXPO_PUBLIC_API_BASE_URL` to the computer LAN URL, for example `http://<YOUR_LAN_IP>:5000/api`.
+- Current tracked files use placeholders for LAN URLs and Stripe keys; do not commit real local IPs or key-looking values.
 
 ## Prioritized Follow-Ups
 
 1. Add mobile component tests for auth restore, venue detail, booking, and payment failure paths.
-2. Add backend tests for Places/Geo missing-key behavior and invalid booking cancellation IDs.
+2. Add backend tests for Places/Geo missing-key behavior and profile preference patching.
 3. Add a no-payment local development booking mode in the mobile UI if `REQUIRE_PAYMENT_FOR_BOOKINGS=false` is used often.
 4. Replace `react-native-keyboard-aware-scroll-view` if Expo/New Architecture compatibility becomes a blocker.
 5. Add screenshots/demo media for portfolio presentation.

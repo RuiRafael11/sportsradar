@@ -5,9 +5,7 @@
 - Google Places routes require a real Google API key and are not covered by integration tests.
 - Email and Expo push notification delivery are best-effort and depend on external credentials/services.
 - Mobile validation is currently a static/config check. It does not replace device testing or React Native Testing Library coverage.
-- The committed `android/` folder makes the app Expo prebuild/native-hybrid. Native upgrades should be handled carefully.
-- `expo-doctor` still warns that native configuration fields in `app.json` may not sync automatically while native folders are committed. Run `npx expo prebuild` intentionally when native config changes are meant to be regenerated.
-- `react-native-keyboard-aware-scroll-view` is reported by Expo Doctor as unmaintained and untested with the New Architecture. Replacing it should be a future mobile polish task.
-- NPM reported dependency vulnerabilities after backend install. They need a separate audit pass because some fixes may require breaking upgrades.
-- NPM also reports vulnerabilities in the mobile dependency tree after install.
+- The committed `android/` folder makes the app Expo prebuild/native-hybrid. Expo Doctor currently reports only the native-folder/app-config sync warning; run `npx expo prebuild` intentionally when native config changes are meant to be regenerated.
+- NPM reports 13 backend dependency vulnerabilities after install. They need a separate audit pass because some fixes may require breaking upgrades.
+- NPM reports 21 mobile dependency vulnerabilities after install.
 - Screenshots and a demo video are not yet included.

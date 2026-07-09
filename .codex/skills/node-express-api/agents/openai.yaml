@@ -1,4 +1,0 @@
-interface:
-  display_name: "node-express-api"
-  short_description: "Project rescue workflow for node-express-api"
-  default_prompt: "Use the node-express-api skill for SportsRadar rescue work."

@@ -157,6 +157,9 @@ npm test
 ```
 
 The backend test suite covers auth, bookings, and mocked Stripe PaymentSheet preparation.
+Current backend validation covers 13 Jest/Supertest tests. The mobile test script is a static/config safety check.
+
+Continuous integration runs backend install/tests, a backend app import smoke check, and the mobile config check.
 
 ## Known Limitations
 
@@ -167,11 +170,12 @@ Highlights:
 - Stripe webhooks are not fully implemented yet.
 - Google Places and notification flows require real external credentials.
 - Mobile validation is currently a lightweight static/config check rather than a full React Native test suite.
+- The repository uses placeholder LAN URLs such as `<YOUR_LAN_IP>`; do not commit real local IP addresses.
 
 ## Future Improvements
 
 - Add full Stripe webhook signature verification with raw body parsing.
-- Add React Native Testing Library coverage for auth/navigation flows.
+- Add React Native Testing Library coverage for auth, navigation, booking, and payment failure flows.
 - Add screenshots and demo video.
 - Add venue admin/backoffice UI.
 - Expand validation and rate limiting for all public routes.
