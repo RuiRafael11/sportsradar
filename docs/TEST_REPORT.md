@@ -2,6 +2,20 @@
 
 Date: 2026-07-09
 
+## Revalidation — 2026-08-05
+
+After synchronizing local `main` with `origin/main`, the backend lockfile was refreshed to remove stale Twilio transitive packages and align `@emnapi/wasi-threads` with its resolved dependency requirements.
+
+| Command | Working directory | Result | Notes |
+| --- | --- | --- | --- |
+| `npm ci` | `backend/` | Pass | Clean install succeeded; NPM reported 14 dependency vulnerabilities. |
+| `npm test` | `backend/` | Pass | 3 suites, 13 tests passed. |
+| `node -e "...require('./app')..."` | `backend/` | Pass | Express app imports without starting MongoDB or listening on a port. |
+| `npm ci` | `mobile/` | Pass | Clean install succeeded; NPM reported 25 dependency vulnerabilities. |
+| `npm test` | `mobile/` | Pass | Static/config check passed. |
+
+Dependency audit remediation remains separate because forced upgrades can introduce breaking changes, especially in the Expo/React Native dependency tree.
+
 ## Phase 1 Baseline
 
 Validated by `test-runner` subagent.

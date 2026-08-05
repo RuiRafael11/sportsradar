@@ -6,6 +6,6 @@
 - Email and Expo push notification delivery are best-effort and depend on external credentials/services.
 - Mobile validation is currently a static/config check. It does not replace device testing or React Native Testing Library coverage.
 - The committed `android/` folder makes the app Expo prebuild/native-hybrid. Expo Doctor currently reports only the native-folder/app-config sync warning; run `npx expo prebuild` intentionally when native config changes are meant to be regenerated.
-- NPM reports 13 backend dependency vulnerabilities after install. They need a separate audit pass because some fixes may require breaking upgrades.
-- NPM reports 21 mobile dependency vulnerabilities after install.
+- As of 2026-08-05, NPM reports 14 backend dependency vulnerabilities after install. They need a separate audit pass because some fixes may require breaking upgrades.
+- As of 2026-08-05, NPM reports 25 mobile dependency vulnerabilities after install, including issues in the Expo/React Native dependency tree that should be reviewed before applying forced upgrades.
 - Screenshots and a demo video are not yet included.
